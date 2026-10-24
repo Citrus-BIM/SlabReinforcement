@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+    <!-- Определение всех конфигураций Revit -->
+    <PropertyGroup>
+        <Configurations>R2019;R2020;R2021;R2022;R2023;R2024;R2025;R2026;R2027</Configurations>
+        <Platforms>AnyCPU</Platforms>
+    </PropertyGroup>
+    <!-- Определение версии Revit и TargetFramework -->
+    <PropertyGroup Condition="'$(Configuration)' == 'R2019'">
+        <RevitVersion>2019</RevitVersion>
+        <TargetFramework>net48</TargetFramework>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'R2020'">
+        <RevitVersion>2020</RevitVersion>
+        <TargetFramework>net48</TargetFramework>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'R2021'">
+        <RevitVersion>2021</RevitVersion>
+        <TargetFramework>net48</TargetFramework>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'R2022'">
+        <RevitVersion>2022</RevitVersion>
+        <TargetFramework>net48</TargetFramework>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'R2023'">
+        <RevitVersion>2023</RevitVersion>
+        <TargetFramework>net48</TargetFramework>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'R2024'">
+        <RevitVersion>2024</RevitVersion>
+        <TargetFramework>net48</TargetFramework>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'R2025'">
+        <RevitVersion>2025</RevitVersion>
+        <TargetFramework>net8.0-windows</TargetFramework>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'R2026'">
+        <RevitVersion>2026</RevitVersion>
+        <TargetFramework>net8.0-windows</TargetFramework>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(Configuration)' == 'R2027'">
+        <RevitVersion>2027</RevitVersion>
+        <TargetFramework>net10.0-windows</TargetFramework>
+    </PropertyGroup>
+
+    <!-- OutputPath и DefineConstants -->
+    <PropertyGroup Condition="'$(RevitVersion)' != ''">
+        <OutputPath>bin\$(Configuration)\</OutputPath>
+        <DefineConstants>DEBUG;$(Configuration);REVIT_$(RevitVersion)</DefineConstants>
+    </PropertyGroup>
+
+    <!-- Общие свойства -->
+    <PropertyGroup>
+        <PlatformTarget>x64</PlatformTarget>
+        <LangVersion>default</LangVersion>
+        <Nullable>enable</Nullable>
+        <DebugSymbols>true</DebugSymbols>
+        <DebugType>full</DebugType>
+        <Optimize>false</Optimize>
+        <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+        <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+        <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+        <UseWPF>true</UseWPF>
+        <UseWindowsForms>true</UseWindowsForms>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference
+                Condition="'$(Configuration)' == 'R$(RevitVersion)'"
+                Include="Revit_All_Main_Versions_API_x64"
+                Version="$(RevitApiPackageVersion)"
+                IncludeAssets="build; compile"/>
+    </ItemGroup>
+
+    <!-- Общие ссылки .NET -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+        <Reference Include="PresentationCore"/>
+        <Reference Include="PresentationFramework"/>
+        <Reference Include="System"/>
+        <Reference Include="System.Core"/>
+        <Reference Include="System.Drawing"/>
+        <Reference Include="System.Windows.Forms"/>
+        <Reference Include="WindowsBase"/>
+    </ItemGroup>
+    <PropertyGroup Condition="'$(RevitVersion)' == '2019'">
+        <RevitApiPackageVersion>2019.0.1</RevitApiPackageVersion>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(RevitVersion)' == '2020'">
+        <RevitApiPackageVersion>2020.0.1</RevitApiPackageVersion>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(RevitVersion)' == '2021'">
+        <RevitApiPackageVersion>2021.1.9</RevitApiPackageVersion>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(RevitVersion)' == '2022'">
+        <RevitApiPackageVersion>2022.1.0</RevitApiPackageVersion>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(RevitVersion)' == '2023'">
+        <RevitApiPackageVersion>2023.0.0</RevitApiPackageVersion>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(RevitVersion)' == '2024'">
+        <RevitApiPackageVersion>2024.2.0</RevitApiPackageVersion>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(RevitVersion)' == '2025'">
+        <RevitApiPackageVersion>2025.0.0</RevitApiPackageVersion>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(RevitVersion)' == '2026'">
+        <RevitApiPackageVersion>2026.0.0</RevitApiPackageVersion>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(RevitVersion)' == '2027'">
+        <RevitApiPackageVersion>2027.0.0</RevitApiPackageVersion>
+    </PropertyGroup>
+</Project>

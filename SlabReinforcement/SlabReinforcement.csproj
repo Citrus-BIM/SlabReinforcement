@@ -87,33 +87,23 @@
     <StartupObject />
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Autodesk.AutoCAD.Interop, Version=24.2.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\AutoCAD.NET.Interop.24.2.53\lib\net48\Autodesk.AutoCAD.Interop.dll</HintPath>
-      <EmbedInteropTypes>True</EmbedInteropTypes>
-    </Reference>
-    <Reference Include="Autodesk.AutoCAD.Interop.Common, Version=24.2.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\AutoCAD.NET.Interop.24.2.53\lib\net48\Autodesk.AutoCAD.Interop.Common.dll</HintPath>
-      <EmbedInteropTypes>True</EmbedInteropTypes>
-    </Reference>
-    <Reference Include="netDxf, Version=2022.11.2.0, Culture=neutral, PublicKeyToken=618c63290969e781, processorArchitecture=MSIL">
-      <HintPath>..\netDxf.dll</HintPath>
-    </Reference>
+    <ProjectReference Include="..\SlabReinforcement.Core\SlabReinforcement.Core.csproj" />
+    <ProjectReference Include="..\SlabReinforcement.Dxf\SlabReinforcement.Dxf.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AlphanumComparatorFastString.cs" />
-    <Compile Include="Cluster.cs" />
     <Compile Include="ColorReinforcementSettings.cs" />
     <Compile Include="ColorStat.cs" />
-    <Compile Include="FiniteElementFace.cs" />
     <Compile Include="FloorSelectionFilter.cs" />
     <Compile Include="ImportInstanceSelectionFilter.cs" />
-    <Compile Include="LineData.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
     <Compile Include="SlabReinforcementCommand.cs" />
+    <Compile Include="Integration\*.cs" />
+    <Compile Include="Preview\*.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SlabReinforcementSettings.cs" />
     <Compile Include="SlabReinforcementWPF.xaml.cs">
@@ -123,6 +113,8 @@
   <ItemGroup>
     <None Include="App.config" />
     <None Include="packages.config" />
+    <None Include="..\docs\licenses\NetTopologySuite.md" Link="licenses\NetTopologySuite.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\docs\licenses\DotNetRuntime.txt" Link="licenses\DotNetRuntime.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Properties\Resources.resx">
@@ -140,6 +132,7 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="CitrusTheme\*.xaml" />
   </ItemGroup>
   <PropertyGroup>
     <EnableDefaultItems>false</EnableDefaultItems>

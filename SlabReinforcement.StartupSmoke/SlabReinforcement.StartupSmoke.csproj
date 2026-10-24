@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <UseWPF>false</UseWPF>
+    <UseWindowsForms>false</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Remove="Revit_All_Main_Versions_API_x64" />
+    <Compile Include="..\SlabReinforcement\CadPoint3D.cs" Link="CadPoint3D.cs" />
+    <Compile Include="..\SlabReinforcement\CadTransform3D.cs" Link="CadTransform3D.cs" />
+    <Compile Include="..\SlabReinforcement\CadImportPlacement.cs" Link="CadImportPlacement.cs" />
+    <Compile Include="..\SlabReinforcement\StartupAsyncRunner.cs" Link="StartupAsyncRunner.cs" />
+  </ItemGroup>
+</Project>

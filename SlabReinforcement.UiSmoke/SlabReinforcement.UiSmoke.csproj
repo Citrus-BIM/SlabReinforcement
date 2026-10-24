@@ -1,0 +1,29 @@
+<Project>
+  <PropertyGroup>
+    <ImportDirectoryBuildProps>false</ImportDirectoryBuildProps>
+    <ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets>
+  </PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <StartupObject>SlabReinforcement.UiSmoke.Program</StartupObject>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\SlabReinforcement\SlabReinforcementWPF.xaml.cs" Link="SlabReinforcementWPF.xaml.cs" />
+    <Compile Include="..\SlabReinforcement\SlabReinforcementSettings.cs" Link="SlabReinforcementSettings.cs" />
+    <Compile Include="..\SlabReinforcement\ColorReinforcementSettings.cs" Link="ColorReinforcementSettings.cs" />
+    <Compile Include="..\SlabReinforcement\ColorStat.cs" Link="ColorStat.cs" />
+    <Compile Include="..\SlabReinforcement\Preview\*.cs" Link="Preview\%(Filename)%(Extension)" />
+    <ProjectReference Include="..\SlabReinforcement.Core\SlabReinforcement.Core.csproj" />
+    <Page Include="..\SlabReinforcement\SlabReinforcementWPF.xaml" Link="SlabReinforcementWPF.xaml" />
+    <Page Include="..\SlabReinforcement\CitrusTheme\*.xaml" Link="CitrusTheme\%(Filename)%(Extension)" />
+    <Resource Include="..\SlabReinforcement\Resources\citrus.ico" Link="Resources\citrus.ico" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

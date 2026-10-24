@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="CitrusTheme.Tokens.xaml"/>
+  </ResourceDictionary.MergedDictionaries>
+
+  <!-- Global defaults -->
+  <Style TargetType="{x:Type FrameworkElement}">
+    <Setter Property="UseLayoutRounding" Value="True"/>
+    <Setter Property="SnapsToDevicePixels" Value="True"/>
+  </Style>
+
+  <Style TargetType="{x:Type TextElement}">
+    <Setter Property="FontFamily" Value="{StaticResource BaseFont}"/>
+    <Setter Property="FontSize" Value="{StaticResource FontSizeBase}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+  </Style>
+
+    <Style TargetType="{x:Type Control}">
+        <Setter Property="FontFamily" Value="{DynamicResource BaseFont}"/>
+        <Setter Property="FontSize"   Value="{DynamicResource FontSizeBase}"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="BorderThickness" Value="{DynamicResource ControlBorderThickness}"/>
+        <Setter Property="Padding" Value="{DynamicResource ControlPaddingBase}"/>
+        <Setter Property="Background" Value="{x:Null}"/>
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
+        <Setter Property="TextOptions.TextRenderingMode"  Value="Auto"/>
+        <Setter Property="TextOptions.TextHintingMode"    Value="Fixed"/>
+    </Style>
+
+
+    <!-- Default TextBlock -->
+  <Style TargetType="{x:Type TextBlock}">
+    <Setter Property="FontFamily" Value="{StaticResource BaseFont}"/>
+    <Setter Property="FontSize" Value="{StaticResource FontSizeBase}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+    <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
+  </Style>
+
+  <!-- Focus visual -->
+  <Style x:Key="FocusRectStyle" TargetType="Control">
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Control">
+          <Rectangle Stroke="{StaticResource FocusBorderBrush}"
+                     StrokeThickness="{StaticResource FocusThickness}"
+                     RadiusX="{StaticResource CornerRadiusSmallValue}"
+                     RadiusY="{StaticResource CornerRadiusSmallValue}"
+                     SnapsToDevicePixels="True"/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+</ResourceDictionary>

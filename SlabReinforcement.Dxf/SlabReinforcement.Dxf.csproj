@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup><ImportDirectoryBuildProps>false</ImportDirectoryBuildProps><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup><TargetFramework>netstandard2.0</TargetFramework><LangVersion>latest</LangVersion><Nullable>disable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\SlabReinforcement.Core\SlabReinforcement.Core.csproj" />
+    <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
+    <None Update="netDxf-MIT.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

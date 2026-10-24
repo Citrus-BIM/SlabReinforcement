@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="CitrusTheme.Tokens.xaml"/>
+  </ResourceDictionary.MergedDictionaries>
+
+    <!-- ScrollBar: РїСЂРѕСЃС‚РѕР№, Р±РµР· РїРµСЂРµРѕРїСЂРµРґРµР»РµРЅРёСЏ С€Р°Р±Р»РѕРЅР° -->
+    <Style TargetType="ScrollBar">
+        <Setter Property="Background" Value="Transparent"/>
+        <!-- СЂР°Р·РјРµСЂС‹ С‚РѕР»СЊРєРѕ РїРѕ РѕСЂРёРµРЅС‚Р°С†РёРё -->
+        <Style.Triggers>
+            <Trigger Property="Orientation" Value="Vertical">
+                <Setter Property="Width" Value="10"/>
+                <Setter Property="Height" Value="Auto"/>
+            </Trigger>
+            <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Height" Value="10"/>
+                <Setter Property="Width" Value="Auto"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- ToolTip -->
+  <Style TargetType="ToolTip">
+    <Setter Property="Background" Value="{StaticResource CardBgBrush}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Padding" Value="8,6"/>
+    <Setter Property="HasDropShadow" Value="True"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ToolTip">
+          <Border Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{StaticResource CornerRadiusSmall}">
+            <ContentPresenter Margin="{TemplateBinding Padding}"/>
+          </Border>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- ContextMenu / Menu -->
+  <Style TargetType="ContextMenu">
+    <Setter Property="Background" Value="White"/>
+    <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Padding" Value="4"/>
+  </Style>
+
+  <Style TargetType="Menu">
+    <Setter Property="Background" Value="{StaticResource Neutral100Brush}"/>
+    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+  </Style>
+
+  <Style TargetType="MenuItem">
+    <Setter Property="Padding" Value="8,4"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="MenuItem">
+          <Border x:Name="Bd" Background="Transparent">
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+              </Grid.ColumnDefinitions>
+              <ContentPresenter Grid.Column="1" Margin="4,0,0,0" VerticalAlignment="Center" />
+            </Grid>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsHighlighted" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource Neutral100Brush}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="{StaticResource Neutral500Brush}"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+    <!-- GroupBox: РїРѕС‡С‚Рё СЃС‚Р°РЅРґР°СЂС‚РЅС‹Р№ -->
+    <Style TargetType="GroupBox">
+        <Setter Property="Margin" Value="0,8,0,8"/>
+        <Setter Property="Padding" Value="8"/>
+        <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+        <Setter Property="Background" Value="{StaticResource CardBgBrush}"/>
+    </Style>
+
+    <!-- Separator -->
+  <Style TargetType="Separator">
+    <Setter Property="Margin" Value="4,6"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Separator">
+          <Border Background="{StaticResource DividerBrush}" Height="1"/>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- StatusBar -->
+  <Style TargetType="StatusBar">
+    <Setter Property="Background" Value="{StaticResource Neutral100Brush}"/>
+    <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+    <Setter Property="BorderThickness" Value="1,1,1,0"/>
+    <Setter Property="Padding" Value="6,2"/>
+  </Style>
+
+</ResourceDictionary>

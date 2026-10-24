@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="CitrusTheme.Tokens.xaml"/>
+  </ResourceDictionary.MergedDictionaries>
+
+  <!-- TabControl -->
+  <Style TargetType="TabControl">
+    <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+    <Setter Property="Background" Value="White"/>
+  </Style>
+
+  <Style TargetType="TabItem">
+    <Setter Property="Padding" Value="10,6"/>
+    <Setter Property="Background" Value="Transparent"/>
+    <Setter Property="BorderBrush" Value="Transparent"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TabItem">
+          <Grid>
+            <Border x:Name="Bd" Margin="2,2,2,0"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="1,1,1,0"
+                    CornerRadius="{StaticResource CornerRadiusSmall}">
+              <ContentPresenter Margin="{TemplateBinding Padding}"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"/>
+            </Border>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="White"/>
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+              <Setter Property="Foreground" Value="{StaticResource AccentBrushPressed}"/>
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Neutral600Brush}"/>
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource Neutral100Brush}"/>
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="{StaticResource Neutral500Brush}"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- Expander -->
+  <Style TargetType="Expander">
+    <Setter Property="Background" Value="White"/>
+    <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Expander">
+          <DockPanel>
+            <ToggleButton x:Name="HeaderSite"
+                          Content="{TemplateBinding Header}"
+                          DockPanel.Dock="Top"
+                          IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}"
+                          Background="{StaticResource Neutral100Brush}"
+                          BorderBrush="{StaticResource DividerBrush}"
+                          FontWeight="SemiBold"
+                          Padding="8,6"/>
+            <ContentPresenter x:Name="ExpandSite" Visibility="Collapsed" Margin="8"/>
+          </DockPanel>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsExpanded" Value="True">
+              <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- TreeView -->
+  <Style TargetType="TreeView">
+    <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+    <Setter Property="BorderThickness" Value="1"/>
+    <Setter Property="Background" Value="White"/>
+  </Style>
+
+  <Style TargetType="TreeViewItem">
+    <Setter Property="Padding" Value="4,2"/>
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="TreeViewItem">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <ToggleButton x:Name="Expander" Style="{x:Null}" Focusable="False" Width="16" Height="16" Margin="2"
+                          ClickMode="Press" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}}">
+              <Path Data="M 0 0 L 4 4 L 8 0" Stroke="{StaticResource Neutral700Brush}" StrokeThickness="2"/>
+            </ToggleButton>
+            <Border Grid.Column="1" x:Name="Bd" CornerRadius="{StaticResource CornerRadiusSmall}" Background="Transparent" Padding="6,2">
+              <ContentPresenter/>
+            </Border>
+            <ItemsPresenter Grid.Column="1" x:Name="ItemsHost" Margin="16,0,0,0" Visibility="Collapsed"/>
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsExpanded" Value="True">
+              <Setter TargetName="ItemsHost" Property="Visibility" Value="Visible"/>
+            </Trigger>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource Neutral100Brush}"/>
+            </Trigger>
+            <Trigger Property="IsSelected" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentBgHoverBrush}"/>
+              <Setter Property="Foreground" Value="{StaticResource AccentBrushPressed}"/>
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+</ResourceDictionary>

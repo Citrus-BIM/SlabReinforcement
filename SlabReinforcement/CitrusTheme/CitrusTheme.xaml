@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- CitrusTheme: merge this single file into App.xaml -->
+  <ResourceDictionary.MergedDictionaries>
+    <ResourceDictionary Source="CitrusTheme.Tokens.xaml"/>
+    <ResourceDictionary Source="CitrusTheme.Base.xaml"/>
+    <ResourceDictionary Source="CitrusTheme.Buttons.xaml"/>
+    <ResourceDictionary Source="CitrusTheme.Inputs.xaml"/>
+    <ResourceDictionary Source="CitrusTheme.Lists.xaml"/>
+    <ResourceDictionary Source="CitrusTheme.DataGrid.xaml"/>
+    <ResourceDictionary Source="CitrusTheme.Navigation.xaml"/>
+    <ResourceDictionary Source="CitrusTheme.Misc.xaml"/>
+  </ResourceDictionary.MergedDictionaries>
+</ResourceDictionary>
