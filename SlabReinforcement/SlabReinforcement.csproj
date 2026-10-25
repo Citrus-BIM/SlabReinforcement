@@ -199,12 +199,40 @@
     <GenerateBindingRedirectsOutputType>false</GenerateBindingRedirectsOutputType>
     <!-- Class libraries otherwise omit NuGet runtime dependencies on modern .NET. -->
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-    <GenerateDependencyFile>false</GenerateDependencyFile>
-    <GenerateDependencyFile Condition="'$(RevitVersion)' == '2025' or '$(RevitVersion)' == '2026' or '$(RevitVersion)' == '2027'">true</GenerateDependencyFile>
+    <GenerateDependencyFile>true</GenerateDependencyFile>
   </PropertyGroup>
+  <!-- The updater uses one filename list for every year. Supply the shared-framework
+       files from the matching runtime without changing assembly references or deps. -->
+  <PropertyGroup Condition="'$(RevitVersion)' == '2025' or '$(RevitVersion)' == '2026'">
+    <DeliveryRuntimeVersion>8.0.31</DeliveryRuntimeVersion>
+    <DeliveryRuntimeFramework>net8.0</DeliveryRuntimeFramework>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RevitVersion)' == '2027'">
+    <DeliveryRuntimeVersion>10.0.12</DeliveryRuntimeVersion>
+    <DeliveryRuntimeFramework>net10.0</DeliveryRuntimeFramework>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(DeliveryRuntimeVersion)' != ''">
+    <PackageDownload Include="Microsoft.NETCore.App.Runtime.win-x64" Version="[$(DeliveryRuntimeVersion)]" />
+  </ItemGroup>
   <Target Name="ExcludeReferenceSymbolsFromRevitOutput" BeforeTargets="_CopyFilesMarkedCopyLocal" Condition="'$(RevitVersion)' != ''">
     <ItemGroup>
       <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths.Extension)' == '.pdb' or '%(ReferenceCopyLocalPaths.Extension)' == '.xml'" />
+    </ItemGroup>
+  </Target>
+  <Target Name="CopyFrameworkFilesForUpdateDelivery" AfterTargets="Build" Condition="'$(DeliveryRuntimeVersion)' != ''">
+    <PropertyGroup>
+      <DeliveryRuntimeDirectory>$(NuGetPackageRoot)microsoft.netcore.app.runtime.win-x64/$(DeliveryRuntimeVersion)/runtimes/win-x64/lib/$(DeliveryRuntimeFramework)/</DeliveryRuntimeDirectory>
+    </PropertyGroup>
+    <ItemGroup>
+      <DeliveryFrameworkFile Include="$(DeliveryRuntimeDirectory)System.Buffers.dll" />
+      <DeliveryFrameworkFile Include="$(DeliveryRuntimeDirectory)System.Memory.dll" />
+      <DeliveryFrameworkFile Include="$(DeliveryRuntimeDirectory)System.Numerics.Vectors.dll" />
+      <DeliveryFrameworkFile Include="$(DeliveryRuntimeDirectory)System.Runtime.CompilerServices.Unsafe.dll" />
+      <DeliveryFrameworkFile Include="$(DeliveryRuntimeDirectory)System.Text.Encoding.CodePages.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(DeliveryFrameworkFile)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <FileWrites Include="@(DeliveryFrameworkFile->'$(TargetDir)%(Filename)%(Extension)')" />
     </ItemGroup>
   </Target>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
