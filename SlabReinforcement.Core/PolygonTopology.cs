@@ -15,11 +15,11 @@ namespace SlabReinforcement.Core
             foreach (var loop in loops)
             {
                 if (polygons.Count >= GeometryKernel.MaximumPolygons)
-                    throw new ArgumentException("Слишком много контуров плиты.", nameof(loops));
+                    throw new ArgumentException("Слишком много контуров плиты. Уменьшите выбранную область.", nameof(loops));
                 var ring = GeometryKernel.ReadRing(loop);
                 vertexCount += ring.NumPoints;
                 if (vertexCount > GeometryKernel.MaximumVertices)
-                    throw new ArgumentException("Слишком много вершин контуров плиты.", nameof(loops));
+                    throw new ArgumentException("В контурах плиты слишком много точек. Упростите контуры.", nameof(loops));
                 polygons.Add(GeometryKernel.Factory.CreatePolygon(ring));
             }
 

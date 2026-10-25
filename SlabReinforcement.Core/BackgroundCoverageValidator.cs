@@ -22,17 +22,17 @@ namespace SlabReinforcement.Core
             try
             {
                 if (faces == null || slabs == null || backgroundBars == null || !GeometryKernel.Finite(spacingMm) || spacingMm <= 0)
-                    throw new ArgumentException("Не заданы геометрия, стержни или положительный шаг фона.");
+                    throw new ArgumentException("Для проверки фона нужны контур плиты, стержни и шаг больше нуля.");
                 var regions = new List<Geometry>();
                 var hosts = new List<Geometry>();
                 long vertices = 0;
                 foreach (var face in faces)
                 {
                     token.ThrowIfCancellationRequested();
-                    if (face?.Vertices == null) throw new ArgumentException("Не задан контур расчётной грани.");
+                    if (face?.Vertices == null) throw new ArgumentException("Не найден контур участка расчётной подложки.");
                     vertices += face.Vertices.Count;
                     if (regions.Count >= GeometryKernel.MaximumFaces || vertices > GeometryKernel.MaximumVertices)
-                        throw new ArgumentException("Превышен лимит расчётных граней или вершин.");
+                        throw new ArgumentException("Слишком много участков или точек подложки. Уменьшите выбранную область.");
                     regions.Add(GeometryKernel.Factory.CreatePolygon(GeometryKernel.ReadRing(face.Vertices)));
                 }
                 foreach (var slab in slabs)
@@ -42,7 +42,7 @@ namespace SlabReinforcement.Core
                         throw new ArgumentException("Не заданы контуры плиты.");
                     vertices += slab.Shell.Count + slab.Holes.Sum(h => (long)h.Count);
                     if (hosts.Count >= GeometryKernel.MaximumPolygons || vertices > GeometryKernel.MaximumVertices)
-                        throw new ArgumentException("Превышен лимит контуров или вершин.");
+                        throw new ArgumentException("Слишком много контуров или точек. Уменьшите выбранную область.");
                     hosts.Add(GeometryKernel.ReadPolygon(slab));
                 }
                 var groups = new List<BarGroup>();
@@ -50,26 +50,26 @@ namespace SlabReinforcement.Core
                 {
                     token.ThrowIfCancellationRequested();
                     if (bar == null || (bar.Centerline != null && bar.Centerline.Count > 0))
-                        throw new ArgumentException("Для зачёта фона нужны прямые стержни выбранного направления.");
-                    if (groups.Count >= CompositePlanValidator.MaximumBars) throw new ArgumentException("Превышен лимит стержней фона.");
+                        throw new ArgumentException("Вычесть фон можно только по прямым стержням выбранного направления.");
+                    if (groups.Count >= CompositePlanValidator.MaximumBars) throw new ArgumentException("Слишком много стержней фона для проверки. Уменьшите выбранную область.");
                     var transverseA = alongX ? bar.Start.Y : bar.Start.X;
                     var transverseB = alongX ? bar.End.Y : bar.End.X;
                     var a = alongX ? bar.Start.X : bar.Start.Y; var b = alongX ? bar.End.X : bar.End.Y;
                     if (!GeometryKernel.Finite(a) || !GeometryKernel.Finite(b) || !GeometryKernel.Finite(transverseA) || !GeometryKernel.Finite(transverseB)
                         || Math.Abs(transverseA - transverseB) > GeometryKernel.Epsilon || Math.Abs(a - b) <= GeometryKernel.Epsilon)
-                        throw new ArgumentException("Ось фонового стержня не соответствует выбранному направлению.");
+                        throw new ArgumentException("Стержень фона направлен иначе, чем выбранное направление зон.");
                     groups.Add(new BarGroup { Start = a <= b ? bar.Start : bar.End, End = a <= b ? bar.End : bar.Start, Count = 1, SpacingMm = spacingMm });
                 }
                 token.ThrowIfCancellationRequested();
                 var demand = GeometryKernel.AreaOnly(GeometryKernel.Intersect(GeometryKernel.Union(regions), GeometryKernel.Union(hosts)));
-                if (demand.IsEmpty) return new List<PlanDiagnostic> { Error("BACKGROUND_COVERAGE_EMPTY", "Выбранная потребность не пересекает бетон плиты; зачёт фона не выполнен.") };
+                if (demand.IsEmpty) return new List<PlanDiagnostic> { Error("BACKGROUND_COVERAGE_EMPTY", "Выбранные участки подложки находятся вне плиты. Фон не вычтен.") };
                 var missing = DemandCoverage.Uncovered(demand, groups, spacingMm, alongX, token, true);
                 if (missing.Area <= GeometryKernel.Epsilon * GeometryKernel.Epsilon) return new List<PlanDiagnostic>();
-                return new List<PlanDiagnostic> { Error("BACKGROUND_COVERAGE_GAP", "Нельзя вычесть фон равномерно: фактические стержни не покрывают выбранную область полосами по половине шага. Непокрытая площадь "
+                return new List<PlanDiagnostic> { Error("BACKGROUND_COVERAGE_GAP", "Фон не вычтен: есть участки без фона. Их площадь "
                     + missing.Area.ToString("G4", CultureInfo.CurrentCulture) + " мм²; участков " + GeometryKernel.Polygons(missing).Count() + ".") };
             }
             catch (ArgumentException ex) { return new List<PlanDiagnostic> { Error("BACKGROUND_COVERAGE_INVALID", ex.Message) }; }
-            catch (TopologyException) { return new List<PlanDiagnostic> { Error("BACKGROUND_COVERAGE_INVALID", "Не удалось проверить пространственное покрытие потребности фоном.") }; }
+            catch (TopologyException) { return new List<PlanDiagnostic> { Error("BACKGROUND_COVERAGE_INVALID", "Фон не проверен. Проверьте контур плиты и существующие стержни.") }; }
         }
         private static PlanDiagnostic Error(string code, string message) => new PlanDiagnostic { Code = code, Message = message, IsBlocking = true };
     }

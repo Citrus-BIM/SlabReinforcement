@@ -17,17 +17,17 @@ namespace SlabReinforcement.Core
             if (top == null || bottom == null)
                 throw new ArgumentException("Не заданы контуры верхней или нижней поверхности плиты.");
             if (!GeometryKernel.Finite(toleranceMm) || toleranceMm < 0)
-                throw new ArgumentException("Допуск сравнения контуров должен быть конечным неотрицательным числом.", nameof(toleranceMm));
+                throw new ArgumentException("Для сравнения контуров нужен допуск не меньше нуля.", nameof(toleranceMm));
 
             var topGeometry = GeometryKernel.Union(top.Select(GeometryKernel.ReadPolygon));
             var bottomGeometry = GeometryKernel.Union(bottom.Select(GeometryKernel.ReadPolygon));
             if (topGeometry.IsEmpty || bottomGeometry.IsEmpty)
-                throw new ArgumentException("Контур верхней или нижней поверхности плиты пуст.");
+                throw new ArgumentException("Не найден контур верхней или нижней поверхности плиты.");
 
             if (!topGeometry.Buffer(toleranceMm).Covers(bottomGeometry)
                 || !bottomGeometry.Buffer(toleranceMm).Covers(topGeometry))
-                throw new ArgumentException("Контуры верха и низа плиты не совпадают при проекции по нормали. "
-                    + "Наклонные плиты с вертикальными торцами и плиты с изменяющимся сечением пока не поддерживаются.");
+                throw new ArgumentException("Контуры верха и низа плиты не совпадают. "
+                    + "Такая форма плиты пока не поддерживается.");
 
             return GeometryKernel.ToInputs(GeometryKernel.Intersect(topGeometry, bottomGeometry));
         }

@@ -111,10 +111,7 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="App.config" />
     <None Include="packages.config" />
-    <None Include="..\docs\licenses\NetTopologySuite.md" Link="licenses\NetTopologySuite.md" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\docs\licenses\DotNetRuntime.txt" Link="licenses\DotNetRuntime.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Properties\Resources.resx">
@@ -123,9 +120,7 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <Resource Include="Resources\citrus.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Resource>
+    <Resource Include="Resources\citrus.ico" />
   </ItemGroup>
   <ItemGroup>
     <Page Include="SlabReinforcementWPF.xaml">
@@ -194,5 +189,23 @@
   <ItemGroup>
     <PackageReference Update="Revit_All_Main_Versions_API_x64" Version="$(RevitApiPackageVersion)" IncludeAssets="build; compile" />
   </ItemGroup>
+  <PropertyGroup Condition="'$(RevitVersion)' != ''">
+    <!-- The Revit folders are deployment outputs; symbols stay out of them. -->
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <CopyDebugSymbolFilesFromPackages>false</CopyDebugSymbolFilesFromPackages>
+    <CopyDocumentationFilesFromPackages>false</CopyDocumentationFilesFromPackages>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>false</GenerateBindingRedirectsOutputType>
+    <!-- Class libraries otherwise omit NuGet runtime dependencies on modern .NET. -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <GenerateDependencyFile Condition="'$(RevitVersion)' == '2025' or '$(RevitVersion)' == '2026' or '$(RevitVersion)' == '2027'">true</GenerateDependencyFile>
+  </PropertyGroup>
+  <Target Name="ExcludeReferenceSymbolsFromRevitOutput" BeforeTargets="_CopyFilesMarkedCopyLocal" Condition="'$(RevitVersion)' != ''">
+    <ItemGroup>
+      <ReferenceCopyLocalPaths Remove="@(ReferenceCopyLocalPaths)" Condition="'%(ReferenceCopyLocalPaths.Extension)' == '.pdb' or '%(ReferenceCopyLocalPaths.Extension)' == '.xml'" />
+    </ItemGroup>
+  </Target>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 </Project>

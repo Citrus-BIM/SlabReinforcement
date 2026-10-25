@@ -119,7 +119,7 @@ namespace SlabReinforcement.Core
 
             // Проверяем наличие данных для указанного класса бетона
             if (!anchorageLengths.ContainsKey(concreteClass))
-                throw new ArgumentException($"Данные для класса бетона {concreteClass} отсутствуют.");
+                throw new ArgumentException($"Для бетона {concreteClass} нужен отдельный расчёт анкеровки.");
 
             var steelData = anchorageLengths[concreteClass];
 
@@ -137,7 +137,7 @@ namespace SlabReinforcement.Core
                 }
                 else
                 {
-                    throw new ArgumentException($"Данные для марки стали {steelGrade} отсутствуют.");
+                    throw new ArgumentException($"Не найдена анкеровка для {steelGrade}. Проверьте класс стали типа.");
                 }
             }
 
@@ -157,7 +157,7 @@ namespace SlabReinforcement.Core
                 }
                 else
                 {
-                    throw new ArgumentException($"Данные для диаметра {barDiameter} отсутствуют.");
+                    throw new ArgumentException($"Для диаметра {barDiameter} нужен отдельный расчёт анкеровки.");
                 }
             }
 

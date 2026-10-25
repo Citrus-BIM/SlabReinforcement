@@ -29,8 +29,8 @@ namespace SlabReinforcement.Integration
 
         public static SlabGeometrySnapshot Read(Document document, Floor floor, Reference edgeReference)
         {
-            if (document == null) throw new ArgumentNullException(nameof(document));
-            if (floor == null) throw new ArgumentNullException(nameof(floor));
+            if (document == null) throw new ArgumentNullException(nameof(document), "Откройте проект и запустите команду снова.");
+            if (floor == null) throw new ArgumentNullException(nameof(floor), "Не найдена выбранная плита. Выберите плиту заново.");
             if (edgeReference == null || !edgeReference.ElementId.Equals(floor.Id))
                 throw new InvalidOperationException("Выберите прямое ребро выбранной плиты для направления X.");
 
@@ -42,7 +42,7 @@ namespace SlabReinforcement.Integration
             using (var compound = floor.FloorType.GetCompoundStructure())
             {
                 if (compound == null || compound.VariableLayerIndex >= 0)
-                    throw new InvalidOperationException("Плиты с переменной толщиной не поддерживаются. Нужна плита постоянной толщины.");
+                    throw new InvalidOperationException("Нужна плита постоянной толщины.");
             }
 
             var topFaces = ReadPlanarFaces(floor, HostObjectUtils.GetTopFaces(floor), "верхней");
@@ -50,10 +50,10 @@ namespace SlabReinforcement.Integration
             var normal = top.FaceNormal.Normalize();
             if (normal.Z < 0) normal = normal.Negate();
             if (normal.Z <= 1e-6)
-                throw new InvalidOperationException("Не удалось определить верхнюю плоскость плиты: нормаль почти горизонтальна.");
+                throw new InvalidOperationException("Почти вертикальная плита не поддерживается.");
 
             foreach (var face in topFaces)
-                RequireSamePlane(face, top.Origin, normal, "Верхние грани плиты не лежат в одной плоскости. Изменённая форма плиты не поддерживается.");
+                RequireSamePlane(face, top.Origin, normal, "Верх плиты должен лежать в одной плоскости.");
 
             var edgeStart = ProjectToPlane(line.GetEndPoint(0), top.Origin, normal);
             var edgeEnd = ProjectToPlane(line.GetEndPoint(1), top.Origin, normal);
@@ -75,12 +75,12 @@ namespace SlabReinforcement.Integration
             var bottomFaces = ReadPlanarFaces(floor, HostObjectUtils.GetBottomFaces(floor), "нижней");
             var bottomOrigin = bottomFaces[0].Origin;
             foreach (var face in bottomFaces)
-                RequireSamePlane(face, bottomOrigin, normal, "Нижние грани плиты не параллельны верхней плоскости или имеют разные отметки. Переменная толщина не поддерживается.");
+                RequireSamePlane(face, bottomOrigin, normal, "Низ плиты должен быть плоским и параллельным верху.");
 
             // Measure along the slab normal, including for a sloped floor.
             var thickness = top.Origin.Subtract(bottomOrigin).DotProduct(normal) * MillimetresPerFoot;
             if (double.IsNaN(thickness) || double.IsInfinity(thickness) || thickness <= PlaneToleranceMm)
-                throw new InvalidOperationException("Не удалось определить положительную толщину плиты по её верхней и нижней граням.");
+                throw new InvalidOperationException("Не удалось определить толщину плиты. Проверьте её верхнюю и нижнюю поверхности.");
 
             var bottomFootprints = ReadFootprints(bottomFaces, frame, -thickness);
             slabs = SlabFootprint.MatchNormalExtrusion(slabs, bottomFootprints, CurveToleranceMm);
@@ -95,7 +95,7 @@ namespace SlabReinforcement.Integration
             var bottomCover = ReadCover(document, floor, BuiltInParameter.CLEAR_COVER_BOTTOM, "нижний");
             var sideCover = ReadCover(document, floor, BuiltInParameter.CLEAR_COVER_OTHER, "боковой");
             if (topCover + bottomCover >= thickness)
-                throw new InvalidOperationException("Сумма верхнего и нижнего защитных слоёв не оставляет места для арматуры.");
+                throw new InvalidOperationException("Нет места между защитными слоями. Проверьте их толщину и толщину плиты.");
 
             var angle = Math.Atan2(frame.XAxis.Y, frame.XAxis.X) * 180 / Math.PI;
             var slope = Math.Acos(Math.Min(1, Math.Max(-1, frame.Normal.Z))) * 180 / Math.PI;
@@ -140,7 +140,7 @@ namespace SlabReinforcement.Integration
                         {
                             var local = frame.ToLocal(ToPoint(samples[i]));
                             if (Math.Abs(local.Z - elevationMm) > PlaneToleranceMm)
-                                throw new InvalidOperationException("Контур плиты выходит из своей плоскости. Изменённая форма плиты не поддерживается.");
+                                throw new InvalidOperationException("Контур плиты должен лежать в одной плоскости.");
                             points.Add(new Point2(local.X, local.Y));
                         }
                     }
@@ -155,7 +155,7 @@ namespace SlabReinforcement.Integration
         private static int ValidateExtrusionFaces(GeometryElement geometry, XYZ normal, XYZ topOrigin, XYZ bottomOrigin, int depth)
         {
             if (depth > 16)
-                throw new InvalidOperationException("Слишком сложная вложенность геометрии плиты.");
+                throw new InvalidOperationException("Геометрия плиты слишком сложная для чтения. Упростите модель плиты.");
             var solidCount = 0;
             foreach (GeometryObject item in geometry)
             {
@@ -186,8 +186,8 @@ namespace SlabReinforcement.Integration
                     var cylinder = face as CylindricalFace;
                     if (cylinder != null && cylinder.Axis.Normalize().CrossProduct(normal).GetLength() <= ParallelTolerance)
                         continue;
-                    throw new InvalidOperationException("Боковые грани плиты не направлены по нормали к её поверхности. "
-                        + "Вертикальные торцы наклонной плиты, скосы и изменяющееся сечение пока не поддерживаются.");
+                    throw new InvalidOperationException("Торцы плиты должны быть перпендикулярны её поверхности. "
+                        + "Скосы пока не поддерживаются.");
                 }
             }
             return solidCount;
@@ -200,7 +200,7 @@ namespace SlabReinforcement.Integration
             {
                 var face = floor.GetGeometryObjectFromReference(reference) as PlanarFace;
                 if (face == null)
-                    throw new InvalidOperationException("У " + side + " поверхности плиты есть неплоская грань. Изменённая форма плиты не поддерживается.");
+                    throw new InvalidOperationException("У " + side + " поверхности плиты есть неплоская грань. Нужна плоская поверхность.");
                 result.Add(face);
             }
             if (result.Count == 0)
@@ -227,7 +227,7 @@ namespace SlabReinforcement.Integration
             var cover = parameter == null || parameter.StorageType != StorageType.ElementId
                 ? null : document.GetElement(parameter.AsElementId()) as RebarCoverType;
             if (cover == null || double.IsNaN(cover.CoverDistance) || double.IsInfinity(cover.CoverDistance) || cover.CoverDistance < 0)
-                throw new InvalidOperationException("Для плиты не задан корректный " + label + " защитный слой арматуры.");
+                throw new InvalidOperationException("В свойствах плиты проверьте " + label + " защитный слой арматуры.");
             return cover.CoverDistance * MillimetresPerFoot;
         }
 
@@ -238,17 +238,17 @@ namespace SlabReinforcement.Integration
 
             var arc = curve as Arc;
             if (arc == null)
-                throw new InvalidOperationException("Контур плиты содержит сплайн или эллипс. Поддерживаются прямые участки и дуги окружности.");
+                throw new InvalidOperationException("Сплайны и эллипсы не поддерживаются. Нужны прямые участки и дуги окружности.");
 
             // Revit's Tessellate() is only display-accurate. Bound the sagitta explicitly instead.
             var radiusMm = arc.Radius * MillimetresPerFoot;
             var sweep = arc.IsBound ? arc.Length / arc.Radius : 2 * Math.PI;
             var halfAngle = Math.Acos(Math.Max(-1, Math.Min(1, 1 - CurveToleranceMm / radiusMm)));
             if (halfAngle <= 0 || double.IsNaN(halfAngle))
-                throw new InvalidOperationException("Радиус дуги слишком велик для надёжной аппроксимации контура.");
+                throw new InvalidOperationException("Дуга контура слишком пологая для точного расчёта. Упростите контур плиты.");
             var requiredSegments = Math.Ceiling(sweep / (2 * halfAngle));
             if (requiredSegments > 10000)
-                throw new InvalidOperationException("Дуга контура требует слишком много сегментов. Упростите контур плиты.");
+                throw new InvalidOperationException("Дуга контура слишком сложная для расчёта. Упростите контур плиты.");
             var segments = Math.Max(4, (int)requiredSegments);
             var result = new List<XYZ>(segments + 1);
             for (int i = 0; i <= segments; i++)

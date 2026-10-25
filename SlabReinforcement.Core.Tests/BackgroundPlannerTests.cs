@@ -35,7 +35,8 @@ public class BackgroundPlannerTests
         request.Slabs[0].Holes.Add(Rectangle(1500,1000,1000,1000).Shell);
         var plan=BackgroundPlanner.Build(request);
         Assert.True(plan.CanCreate);
-        var row=plan.Bars.Where(b=>Math.Abs(b.Start.Y-1400)<1e-6).OrderBy(b=>b.Start.X).ToList();
+        var transverse=plan.Bars.Where(b=>b.Start.Y>969&&b.Start.Y<2031).Select(b=>b.Start.Y).OrderBy(y=>Math.Abs(y-1400)).First();
+        var row=plan.Bars.Where(b=>Math.Abs(b.Start.Y-transverse)<1e-6).OrderBy(b=>b.Start.X).ToList();
         Assert.Equal(2,row.Count); Assert.Equal(1469,row[0].End.X,5); Assert.Equal(2531,row[1].Start.X,5);
         Assert.DoesNotContain(plan.Bars,b=>b.Start.Y>969 && b.Start.Y<2031 && b.Start.X<1500 && b.End.X>2500);
     }
@@ -47,12 +48,12 @@ public class BackgroundPlannerTests
         Assert.False(plan.CanCreate); Assert.Contains(plan.Diagnostics,d=>d.Code=="BACKGROUND_LAYERS");
     }
 
-    [Fact] public void NarrowSlabHasOneCentralRowInsteadOfEmptyPlan()
+    [Fact] public void NarrowSlabPlacesBothBoundaryRowsWhenTheyPhysicallyFit()
     {
         var request=Request(); request.Slabs=new List<PolygonInput>{Rectangle(0,0,4000,100)};
         request.Layers=request.Layers.Take(1).ToList();
         var plan=BackgroundPlanner.Build(request);
-        Assert.True(plan.CanCreate); Assert.Single(plan.Bars); Assert.Equal(50,plan.Bars[0].Start.Y);
+        Assert.True(plan.CanCreate); Assert.Equal(new[]{31.0,69.0},plan.Bars.Select(b=>b.Start.Y).OrderBy(y=>y));
     }
 
     [Fact] public void CountLimitAndCancellationAreEnforced()

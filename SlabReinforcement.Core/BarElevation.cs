@@ -10,9 +10,9 @@ namespace SlabReinforcement.Core
         {
             foreach (var value in new[] { thicknessMm, selectedCoverMm, oppositeCoverMm, diameterMm, layerOffsetMm })
                 if (double.IsNaN(value) || double.IsInfinity(value) || value < 0)
-                    throw new ArgumentException("Толщина, защитные слои и смещение должны быть конечными неотрицательными числами.");
+                    throw new ArgumentException("Проверьте толщину, защитные слои и смещение: нужны числа не меньше нуля.");
             if (diameterMm <= 0 || thicknessMm <= 0 || selectedCoverMm + oppositeCoverMm + diameterMm + layerOffsetMm > thicknessMm)
-                throw new ArgumentException("Арматура со смещением слоя не помещается в толщине плиты с заданными защитными слоями.");
+                throw new ArgumentException("Арматура не помещается по толщине плиты. Проверьте диаметр и защитные слои.");
             double inset = selectedCoverMm + diameterMm / 2 + layerOffsetMm;
             return top ? -inset : -thicknessMm + inset;
         }

@@ -16,9 +16,12 @@ namespace SlabReinforcement
         public string LayerOffsetMm { get; set; } = "0";
         public string SelectedReinforcementDirection { get; set; } = "Низ X";
         public bool UseCutLengths { get; set; }
+        // Retained for old XML; intersections no longer require a user toggle.
+        public bool AllowBarIntersections { get; set; } = true;
         public string RoundIncrement { get; set; } = "10";
         public List<ColorReinforcementSettings> ColorSettings { get; set; } = new List<ColorReinforcementSettings>();
         public string DemandMeaning { get; set; } = "Manual";
+        public bool AutomaticZoneEnds { get; set; } = true;
         public List<BackgroundLayerSettings> BackgroundLayers { get; set; } = new List<BackgroundLayerSettings>();
         public PerimeterReinforcementSettings Perimeter { get; set; } = new PerimeterReinforcementSettings();
 
@@ -53,8 +56,9 @@ namespace SlabReinforcement
                 // Older MVP settings may enable longitudinal contours; the selected MVP scope is U-bars only.
                 result.Perimeter.UseUbars = true;
                 result.Perimeter.UseLongitudinalBars = false;
+                result.AllowBarIntersections = true;
                 if (path == legacyPath && !result.TrySaveSettings(out string migrationWarning))
-                    result.Warning = "Старые настройки загружены, но перенос не выполнен. " + migrationWarning;
+                    result.Warning = "Загружены прежние настройки. " + migrationWarning;
                 return result;
             }
             catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException ||
@@ -62,7 +66,7 @@ namespace SlabReinforcement
             {
                 return new SlabReinforcementSettings
                 {
-                    Warning = "Не удалось прочитать сохранённые настройки. Применены начальные значения. " + exception.Message
+                    Warning = "Не удалось загрузить настройки. Проверьте параметры: выбраны значения по умолчанию."
                 };
             }
         }
@@ -89,7 +93,7 @@ namespace SlabReinforcement
             catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException ||
                 exception is InvalidOperationException || exception is System.Security.SecurityException)
             {
-                warning = "Не удалось сохранить настройки: " + exception.Message;
+                warning = "Настройки не сохранены. При следующем запуске задайте параметры заново.";
                 Warning = warning;
                 return false;
             }

@@ -24,8 +24,8 @@ namespace SlabReinforcement.Core
             foreach (var point in source)
             {
                 if (!Finite(point.X) || !Finite(point.Y) || Math.Abs(point.X) > 1e10 || Math.Abs(point.Y) > 1e10)
-                    throw new ArgumentException("Контур содержит недопустимые координаты.");
-                if (points.Count >= MaximumVertices) throw new ArgumentException("В контуре слишком много вершин.");
+                    throw new ArgumentException("Не удалось прочитать координаты контура. Проверьте его точки.");
+                if (points.Count >= MaximumVertices) throw new ArgumentException("В контуре слишком много точек. Упростите контур.");
                 // Canonical 1e-6 mm input grid matches Epsilon. Revit frame transforms
                 // produce ~1e-11 mm noise at nominal grid boundaries; leaving it in a
                 // ring can remove a complete boundary row from an exact NTS slice.
@@ -37,20 +37,20 @@ namespace SlabReinforcement.Core
                     points.Add(new Coordinate(x, y));
             }
             if (points.Count > 1 && points[0].Equals2D(points[points.Count - 1])) points.RemoveAt(points.Count - 1);
-            if (points.Count < 3) throw new ArgumentException("Для контура нужны не менее трёх различных вершин.");
+            if (points.Count < 3) throw new ArgumentException("В контуре должно быть не меньше трёх разных точек.");
             points.Add(points[0].Copy());
             var ring = Factory.CreateLinearRing(points.ToArray());
             var polygon = Factory.CreatePolygon(ring);
             if (!ring.IsSimple || !polygon.IsValid || polygon.Area <= Epsilon * Epsilon)
-                throw new ArgumentException("Контур вырожден или содержит самопересечение.");
+                throw new ArgumentException("Контур не образует замкнутую область или пересекает сам себя. Исправьте контур.");
             return ring;
         }
 
         internal static Polygon ReadPolygon(PolygonInput input)
         {
-            if (input == null) throw new ArgumentException("Не задан полигон плиты.");
+            if (input == null) throw new ArgumentException("Не найден контур плиты.");
             var shell = ReadRing(input.Shell);
-            if (input.Holes == null) throw new ArgumentException("Не задан список отверстий плиты.");
+            if (input.Holes == null) throw new ArgumentException("Не удалось прочитать отверстия плиты.");
             var holes = input.Holes.Select(ReadRing).ToArray();
             var polygon = Factory.CreatePolygon(shell, holes);
             if (!polygon.IsValid) throw new ArgumentException("Отверстия пересекаются или выходят за наружный контур плиты.");

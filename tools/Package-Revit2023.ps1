@@ -33,12 +33,9 @@ $runtimeFiles = @(
     'System.Memory.dll',
     'System.Numerics.Vectors.dll',
     'System.Runtime.CompilerServices.Unsafe.dll',
-    'System.Text.Encoding.CodePages.dll',
-    'SlabReinforcement.dll.config',
-    'netDxf-MIT.txt',
-    'licenses\NetTopologySuite.md',
-    'licenses\DotNetRuntime.txt'
+    'System.Text.Encoding.CodePages.dll'
 )
+# Third-party notices accompany the runtime as embedded resources in Core/Dxf.
 $documents = @(
     'docs\deployment\revit2023-mvp.md',
     'docs\validation\2026-10-24-mvp-recheck.md',

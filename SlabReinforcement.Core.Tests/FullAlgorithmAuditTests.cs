@@ -63,16 +63,18 @@ public class FullAlgorithmAuditTests
     [Fact]
     public void GeometricCoverageIsNotNumericalAreaPerMetreVerification()
     {
-        var request = Request(Rect(300, 1, 2700, 399));
+        var request = Request(Rect(300, 1, 2700, 599));
         request.Options.EdgeCoverMm = 0;
         var plan = ReinforcementPlanner.Build(request);
         Assert.True(plan.CanCreate);
-        Assert.Single(plan.Bars);
-        // Allowed transverse range is 6..399 after the physical radius clearance.
-        // One bar covers it under the current +/- one-pitch geometric envelope.
+        Assert.Equal(2, plan.Bars.Count);
+        Assert.Equal(2, Assert.Single(plan.Groups).Count);
+        // Allowed transverse range is 6..599 after the physical radius clearance.
+        // Two bars form a real zone, but their +/- one-pitch geometric envelope
+        // still covers a strip wider than the numerical tributary width.
         var nominalAs = Math.PI * 12 * 12 / 4 * 1000 / 200;
-        var stripAverageAs = Math.PI * 12 * 12 / 4 * 1000 / (399 - 6);
-        Assert.True(stripAverageAs < 0.51 * nominalAs);
+        var stripAverageAs = 2 * Math.PI * 12 * 12 / 4 * 1000 / (599 - 6);
+        Assert.True(stripAverageAs < 0.68 * nominalAs);
         // This is a demonstration of the metric mismatch, not a code-based section check.
     }
 
@@ -94,13 +96,18 @@ public class FullAlgorithmAuditTests
     {
         var request = Request(Rect(300, 199, 2700, 201));
         request.Specifications[0].DiameterMm = 6;
+        request.Faces.Add(new() { Id = "small-second-row", ColorKey = "red", Vertices = Rect(300, 399, 2700, 401) });
         request.Faces.Add(new() { Id = "large", ColorKey = "blue", Vertices = Rect(300, 219, 2700, 221) });
+        request.Faces.Add(new() { Id = "large-second-row", ColorKey = "blue", Vertices = Rect(300, 419, 2700, 421) });
         request.Specifications.Add(new() { Key = "large", ColorKey = "blue", MaterialKey = "A500", DiameterMm = 40, SpacingMm = 200 });
         var plan = ReinforcementPlanner.Build(request);
         Assert.False(plan.CanCreate);
         Assert.Contains(plan.Diagnostics, d => d.Code == "FINAL_BAR_COLLISION");
-        var small = Assert.Single(plan.Bars, b => b.SpecKey == "base");
-        var large = Assert.Single(plan.Bars, b => b.SpecKey == "large");
+        Assert.All(plan.Groups, g => Assert.Equal(2, g.Count));
+        Assert.Equal(2, plan.Bars.Count(b => b.SpecKey == "base"));
+        Assert.Equal(2, plan.Bars.Count(b => b.SpecKey == "large"));
+        var small = plan.Bars.First(b => b.SpecKey == "base");
+        var large = plan.Bars.First(b => b.SpecKey == "large");
         var smallZ = BarElevation.Calculate(true, 300, 25, 25, 6, 0);
         var largeZ = BarElevation.Calculate(true, 300, 25, 25, 40, 0);
         var dy = small.Start.Y - large.Start.Y;

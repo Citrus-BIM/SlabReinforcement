@@ -24,6 +24,10 @@ namespace SlabReinforcement.Core
         public bool Openings { get; set; }
         public bool UseUbars { get; set; }
         public bool UseLongitudinalBars { get; set; }
+        public ReinforcementPlan BackgroundPlan { get; set; }
+        public List<BackgroundLayer> BackgroundLayers { get; set; } = new List<BackgroundLayer>();
+        // Reuse available lower rows and complete otherwise unframed edges with SpacingMm.
+        public bool CompleteMissingBackgroundEdges { get; set; }
     }
 
     public static class PerimeterPlanner
@@ -38,22 +42,40 @@ namespace SlabReinforcement.Core
 
         public static ReinforcementPlan Build(PerimeterRequest request,CancellationToken token=default)
         {
+            if (request?.CompleteMissingBackgroundEdges == true) return HybridPerimeterPlanner.Build(request, token);
+            if (request?.BackgroundPlan != null) return BackgroundPerimeterPlanner.Build(request, token);
+            return BuildIndependent(request, token);
+        }
+
+        internal static ReinforcementPlan BuildIndependent(PerimeterRequest request, CancellationToken token,
+            HashSet<string> excludedEdges = null)
+        {
             token.ThrowIfCancellationRequested();var result=new ReinforcementPlan();
             try
             {
                 if(request==null || request.Slabs==null || request.Slabs.Count==0 || string.IsNullOrWhiteSpace(request.TypeKey))
-                    throw new ArgumentException("Для обрамления задайте плиту и тип арматуры.");
+                    throw new ArgumentException("Для обрамления фона выберите плиту и тип арматуры.");
                 if(!request.Outer && !request.Openings || !request.UseUbars && !request.UseLongitudinalBars)
-                    throw new ArgumentException("Выберите контуры и вид обрамления.");
-                foreach(double value in new[]{request.DiameterMm,request.ModelDiameterMm,request.BendDiameterMm,request.ThicknessMm,request.SpacingMm,request.LegLengthMm})
-                    if(!GeometryKernel.Finite(value)||value<=0) throw new ArgumentException("Диаметр, радиус загиба, толщина, шаг и длина лапки должны быть положительными.");
+                    throw new ArgumentException("Выберите края плиты или отверстия и вид обрамления.");
+                foreach(double value in new[]{request.DiameterMm,request.ModelDiameterMm,request.BendDiameterMm,request.ThicknessMm,request.LegLengthMm})
+                    if(!GeometryKernel.Finite(value)||value<=0) throw new ArgumentException("Введите диаметр, радиус загиба, толщину плиты, шаг и длину полки П больше нуля.");
                 foreach(double value in new[]{request.TopCoverMm,request.BottomCoverMm,request.SideCoverMm})
-                    if(!GeometryKernel.Finite(value)||value<0) throw new ArgumentException("Защитные слои должны быть конечными неотрицательными числами.");
-                if(request.SpacingMm<request.ModelDiameterMm) throw new ArgumentException("Шаг обрамления меньше физического диаметра.");
+                    if(!GeometryKernel.Finite(value)||value<0) throw new ArgumentException("Введите защитные слои числами не меньше нуля.");
                 var host=GeometryKernel.Union(request.Slabs.Select(GeometryKernel.ReadPolygon));
                 double radius=request.ModelDiameterMm/2;
                 double bendRadius=(request.BendDiameterMm+request.ModelDiameterMm)/2;
                 var allowed=host.Buffer(-request.SideCoverMm-radius,new BufferParameters {JoinStyle=JoinStyle.Mitre,MitreLimit=5,SimplifyFactor=0});
+                var rings=GeometryKernel.ToInputs(allowed).SelectMany(p=>SelectedRings(p,request)).ToList();
+                if(rings.Count==0) throw new ArgumentException("Не найдены выбранные края для обрамления. Проверьте наружный контур и отверстия.");
+                if(rings.Sum(r=>r.Count)>2000) throw new ArgumentException("Контур обрамления слишком сложный. Упростите его.");
+                // No independent bars are needed when actual lower rows already frame
+                // every selected edge. In particular, an unused manual step is irrelevant.
+                if(excludedEdges!=null && !request.UseLongitudinalBars && rings.All(ring=>
+                    Enumerable.Range(0,ring.Count).All(i=>excludedEdges.Contains(HybridPerimeterPlanner.EdgeKey(ring[i],ring[(i+1)%ring.Count])))))
+                    return result;
+                if(!GeometryKernel.Finite(request.SpacingMm)||request.SpacingMm<=0)
+                    throw new ArgumentException("Введите шаг П-обрамления фона больше нуля.");
+                if(request.SpacingMm<request.ModelDiameterMm) throw new ArgumentException("Шаг П-обрамления меньше диаметра стержня. Увеличьте шаг.");
                 // Erosion can merge openings with each other or with the outside.
                 // Selecting only surviving inset rings would silently omit requested
                 // opening edges, even though every remaining bar passes containment.
@@ -61,7 +83,7 @@ namespace SlabReinforcement.Core
                     !=GeometryKernel.Polygons(allowed).Sum(p=>p.NumInteriorRings))
                 {
                     result.Diagnostics.Add(new PlanDiagnostic{Code="PERIMETER_OPENING_TOPOLOGY",
-                        Message="После учёта защитного слоя отверстия сливаются между собой или с наружным контуром. Полное обрамление выбранных отверстий не может быть построено; узкие перемычки требуют отдельного решения.",IsBlocking=true});
+                        Message="Обрамление не помещается возле отверстий. Узкие перемычки нужно армировать отдельно.",IsBlocking=true});
                     return result;
                 }
                 if(request.Outer)
@@ -94,13 +116,10 @@ namespace SlabReinforcement.Core
                         }
                         if(!changed) continue;
                         result.Diagnostics.Add(new PlanDiagnostic{Code="PERIMETER_OUTER_TOPOLOGY",
-                            Message="После учёта защитного слоя часть плиты исчезает, разделяется или наружный контур соединяется с отверстием. Полное обрамление выбранного наружного контура не может быть построено; узкие участки требуют отдельного решения.",IsBlocking=true});
+                            Message="Обрамление не помещается в узких местах. Их нужно армировать отдельно.",IsBlocking=true});
                         return result;
                     }
                 }
-                var rings=GeometryKernel.ToInputs(allowed).SelectMany(p=>SelectedRings(p,request)).ToList();
-                if(rings.Count==0) throw new ArgumentException("Выбранных контуров для обрамления нет.");
-                if(rings.Sum(r=>r.Count)>2000) throw new ArgumentException("Слишком сложный контур обрамления. Для MVP нужны прямолинейные края без плотной аппроксимации дуг.");
                 int ringIndex=0;
                 foreach(var ring in rings)
                 {
@@ -109,6 +128,9 @@ namespace SlabReinforcement.Core
                     for(int edge=0;edge<ring.Count;edge++)
                     {
                         var a=ring[edge];var b=ring[(edge+1)%ring.Count];
+                        // Exclude before edge height/range/detail validation: those edges
+                        // already have their separately checked background-aligned bars.
+                        if(excludedEdges!=null && excludedEdges.Contains(HybridPerimeterPlanner.EdgeKey(a,b)))continue;
                         var along=Unit(new Point2(b.X-a.X,b.Y-a.Y));var inward=new Point2(-along.Y,along.X);
                         double length=Distance(a,b);
                         // Shells are CCW and openings CW: concrete is always on the left.
@@ -116,16 +138,27 @@ namespace SlabReinforcement.Core
                         double zBottom=-request.ThicknessMm+request.BottomCoverMm+radius+band*request.ModelDiameterMm;
                         double zTop=-request.TopCoverMm-radius-band*request.ModelDiameterMm;
                         if(zTop-zBottom<2*bendRadius+2 || request.LegLengthMm<=bendRadius+2)
-                            throw new ArgumentException("П-образный стержень с фактическим загибом не помещается по толщине или длине лапки.");
-                        int count=(int)Math.Ceiling(length/request.SpacingMm);
-                        if(count>100000 || result.Bars.Count+count>200000) throw new ArgumentException("Слишком много П-образных стержней.");
-                        // A centred station sequence avoids a doubled U bar at each corner.
-                        double step=length/count;
-                        if(step<request.ModelDiameterMm) throw new ArgumentException("Участок контура слишком короткий для размещения обрамления.");
+                            throw new ArgumentException("Загиб П-стержня не помещается. Проверьте тип арматуры и толщину плиты.");
+                        if(!TryStationRange(a,b,inward,length,request.LegLengthMm,request.ModelDiameterMm,allowed,out var rangeStart,out var rangeEnd))
+                        {
+                            result.Diagnostics.Add(new PlanDiagnostic {Code="PERIMETER_STATION_RANGE",SourceId=ringIndex+":"+edge,IsBlocking=true,
+                                Message="Полки П-обрамления не помещаются. Эти места нужно армировать отдельно."});
+                            continue;
+                        }
+                        var stations=UStations(rangeStart,rangeEnd,request.ModelDiameterMm,request.SpacingMm);
+                        if(stations==null)throw new ArgumentException("Крайние П-стержни не размещены. Проверьте шаг, диаметр и размер области.");
+                        int count=stations.Count;
+                        if(count>100000 || result.Bars.Count+count>200000) throw new ArgumentException("Слишком много П-стержней. Увеличьте шаг или уменьшите выбранную область.");
+                        // Keep one physical diameter from vertices; no duplicate U at corners.
+                        int firstBar=result.Bars.Count,firstGroup=result.Groups.Count;
+                        var edgeInfo=new PerimeterUEdge {Id=ringIndex+":"+edge,Start=a,End=b,Inward=inward,
+                            TopZ=zTop,BottomZ=zBottom,ModelDiameterMm=request.ModelDiameterMm,BendRadiusMm=bendRadius,
+                            LegLengthMm=request.LegLengthMm,SideCoverMm=request.SideCoverMm,SpacingMm=request.SpacingMm,
+                            StationRangeStartMm=rangeStart,StationRangeEndMm=rangeEnd};
                         for(int i=0;i<count;i++)
                         {
                             token.ThrowIfCancellationRequested();
-                            var edgePoint=new Point2(a.X+along.X*step*(i+0.5),a.Y+along.Y*step*(i+0.5));
+                            var edgePoint=new Point2(a.X+along.X*stations[i],a.Y+along.Y*stations[i]);
                             Func<double,double,Point3> at=(x,z)=>new Point3(edgePoint.X+inward.X*x,edgePoint.Y+inward.Y*x,z);
                             double q=1-Math.Sqrt(0.5);
                             var path=new List<CenterlineSegment>
@@ -140,10 +173,28 @@ namespace SlabReinforcement.Core
                             var projected=GeometryKernel.Factory.CreateLineString(new[]{new Coordinate(edgePoint.X,edgePoint.Y),new Coordinate(edgePoint.X+inward.X*request.LegLengthMm,edgePoint.Y+inward.Y*request.LegLengthMm)});
                             if(!allowed.Buffer(1e-5).Covers(projected))
                             {
-                                result.Diagnostics.Add(new PlanDiagnostic{Code="PERIMETER_CONTAINMENT",Message="Лапка обрамления выходит из бетона или пересекает отверстие. Уменьшите длину только после проверки узла.",SourceId=ringIndex+":"+edge,IsBlocking=true});
+                                result.Diagnostics.Add(new PlanDiagnostic{Code="PERIMETER_CONTAINMENT",Message="Полка П выходит за край или в отверстие. Сокращать её без расчёта нельзя.",SourceId=ringIndex+":"+edge,IsBlocking=true});
                                 continue;
                             }
                             Add(result,path,request,"PerimeterU",new Point3(along.X,along.Y,0));
+                            edgeInfo.StationsMm.Add(stations[i]);
+                            edgeInfo.BarKeys.Add(result.Bars[result.Bars.Count-1].SpecKey);
+                        }
+                        if(edgeInfo.StationsMm.Count==count)
+                        {
+                            result.PerimeterUEdges.Add(edgeInfo);
+                            result.Groups.RemoveRange(firstGroup,count);
+                            for(int offset=0;offset<count;)
+                            {
+                                int members=1;
+                                while(offset+members<count&&members<1002
+                                    &&(int)Math.Ceiling((stations[offset+members]-stations[offset])/request.SpacingMm)+1==members+1)members++;
+                                var first=result.Bars[firstBar+offset];double arrayLength=stations[offset+members-1]-stations[offset];
+                                result.Groups.Add(new BarGroup {Start=first.Start,End=first.End,SpecKey=first.SpecKey,ColorKey=first.ColorKey,Placement=first.Placement,
+                                    Centerline=first.Centerline,Count=members,SpacingMm=members>1?arrayLength/(members-1):0,
+                                    LayoutRule=BarLayoutRule.MaximumSpacing,MaximumSpacingMm=request.SpacingMm,ArrayLengthMm=arrayLength});
+                                offset+=members;
+                            }
                         }
                     }
                     ringIndex++;
@@ -152,12 +203,12 @@ namespace SlabReinforcement.Core
                 {
                     double uDepth=ReservedDepth(request)-request.ModelDiameterMm;
                     if(request.TopCoverMm+request.BottomCoverMm+2*(uDepth+request.ModelDiameterMm)>request.ThicknessMm+1e-6)
-                        throw new ArgumentException("Верхнее и нижнее продольное обрамление пересекаются по толщине плиты.");
+                        throw new ArgumentException("Продольное обрамление пересекается по высоте. Проверьте диаметры и защитные слои.");
                     // Extra setback leaves room for a real bend at re-entrant/hole corners.
                     double inset=request.SideCoverMm+radius+uDepth+bendRadius;
                     var longitudinal=host.Buffer(-inset,new BufferParameters{JoinStyle=JoinStyle.Mitre,MitreLimit=5,SimplifyFactor=0});
                     var longitudinalRings=GeometryKernel.ToInputs(longitudinal).SelectMany(p=>SelectedRings(p,request)).ToList();
-                    if(longitudinalRings.Count!=rings.Count) throw new ArgumentException("После отступа продольного обрамления изменилось число контуров. Узкие участки требуют отдельного решения.");
+                    if(longitudinalRings.Count!=rings.Count) throw new ArgumentException("Продольное обрамление не помещается. Узкие места нужно армировать отдельно.");
                     foreach(var ring in longitudinalRings)
                     foreach(bool top in new[]{false,true})
                     {
@@ -166,21 +217,54 @@ namespace SlabReinforcement.Core
                             top?request.BottomCoverMm:request.TopCoverMm,request.ModelDiameterMm,uDepth);
                         var path=RoundedRing(ring,z,bendRadius);
                         var projected=GeometryKernel.Factory.CreateLineString(Sample(path,0.01).Select(p=>new Coordinate(p.X,p.Y)).ToArray());
-                        if(!projected.IsSimple) throw new ArgumentException("Продольное обрамление имеет самопересечение после загибов.");
-                        if(!allowed.Buffer(1e-5).Covers(projected)) throw new ArgumentException("Загиб продольного обрамления выходит за допустимый бетон.");
+                        if(!projected.IsSimple) throw new ArgumentException("Загибы продольного обрамления пересекаются. Проверьте контур и радиус загиба.");
+                        if(!allowed.Buffer(1e-5).Covers(projected)) throw new ArgumentException("Загиб продольного обрамления выходит за край плиты или нарушает защитный слой.");
                         Add(result,path,request,"PerimeterLongitudinal",new Point3(0,0,1));
                     }
-                    result.Diagnostics.Add(new PlanDiagnostic{Code="PERIMETER_SPLICES",Message="Продольное обрамление показано замкнутым контуром; стык и разбивка на монтажные марки задаются отдельным узлом."});
+                    result.Diagnostics.Add(new PlanDiagnostic{Code="PERIMETER_SPLICES",Message="Продольное обрамление замкнуто. Стыки и разделение стержней задайте отдельно."});
                 }
-                if(result.Bars.Count==0 && !result.Diagnostics.Any(d=>d.IsBlocking)) throw new ArgumentException("Не удалось разместить обрамление.");
+                if(result.Bars.Count==0 && !result.Diagnostics.Any(d=>d.IsBlocking)) throw new ArgumentException("Не удалось разместить обрамление. Проверьте выбранные края, диаметр и защитные слои.");
             }
             catch(ArgumentException ex){result.Diagnostics.Add(new PlanDiagnostic{Code="PERIMETER_GEOMETRY",Message=ex.Message,IsBlocking=true});}
-            catch(TopologyException){result.Diagnostics.Add(new PlanDiagnostic{Code="PERIMETER_GEOMETRY",Message="Ошибка геометрии контура обрамления.",IsBlocking=true});}
+            catch(TopologyException){result.Diagnostics.Add(new PlanDiagnostic{Code="PERIMETER_GEOMETRY",Message="Не удалось построить обрамление. Проверьте контур плиты и отверстия.",IsBlocking=true});}
+            if(!result.CanCreate)result.PerimeterUEdges.Clear();
             return result;
         }
 
         private static IEnumerable<List<Point2>> SelectedRings(PolygonInput p,PerimeterRequest request)
         {if(request.Outer) yield return p.Shell;if(request.Openings)foreach(var hole in p.Holes)yield return hole;}
+        internal static List<double> UStations(double first,double last,double diameter,double maximum)
+        {
+            double span=last-first;
+            // Two reserved endpoints would overlap on a very short edge.
+            if(span<diameter-1e-6)return new List<double>{(first+last)/2};
+            double intervals=Math.Ceiling(span/maximum);
+            if(!GeometryKernel.Finite(intervals)||intervals+1>100000||span/intervals<diameter-1e-6)return null;
+            var result=new List<double>();
+            for(int i=0;i<=(int)intervals;i++)result.Add(i==(int)intervals?last:first+span*i/intervals);
+            return result;
+        }
+        private static bool TryStationRange(Point2 a,Point2 b,Point2 inward,double length,double leg,double diameter,Geometry allowed,out double first,out double last)
+        {
+            first=diameter;last=length-diameter;
+            if(length<=2*diameter){first=last=length/2;return true;}
+            var strip=GeometryKernel.Factory.CreatePolygon(new[]{new Coordinate(a.X,a.Y),new Coordinate(b.X,b.Y),
+                new Coordinate(b.X+inward.X*leg,b.Y+inward.Y*leg),new Coordinate(a.X+inward.X*leg,a.Y+inward.Y*leg),new Coordinate(a.X,a.Y)});
+            var unsafeParts=GeometryKernel.Polygons(GeometryKernel.Difference(strip,allowed)).Where(p=>p.Area>GeometryKernel.Epsilon*GeometryKernel.Epsilon);
+            var along=new Point2((b.X-a.X)/length,(b.Y-a.Y)/length);
+            var forbidden=unsafeParts.Select(p=>p.Coordinates.Select(c=>(c.X-a.X)*along.X+(c.Y-a.Y)*along.Y).ToArray())
+                .Select(values=>new[]{Math.Max(diameter,values.Min()),Math.Min(length-diameter,values.Max())})
+                .Where(interval=>interval[1]-interval[0]>GeometryKernel.Epsilon).OrderBy(interval=>interval[0]);
+            var safe=new List<double[]>();double cursor=first;
+            foreach(var interval in forbidden)
+            {
+                if(interval[0]>cursor+GeometryKernel.Epsilon)safe.Add(new[]{cursor,interval[0]});
+                cursor=Math.Max(cursor,interval[1]);
+            }
+            if(last>cursor+GeometryKernel.Epsilon)safe.Add(new[]{cursor,last});
+            if(safe.Count!=1)return false;
+            first=safe[0][0];last=safe[0][1];return true;
+        }
         private static CenterlineSegment Segment(Point3 a,Point3 b,Point3? mid=null)=>new CenterlineSegment{Start=a,End=b,Midpoint=mid};
         private static void Add(ReinforcementPlan plan,List<CenterlineSegment> path,PerimeterRequest request,string component,Point3 normal)
         {
@@ -197,9 +281,9 @@ namespace SlabReinforcement.Core
                 var prev=ring[(i+ring.Count-1)%ring.Count];var v=ring[i];var next=ring[(i+1)%ring.Count];
                 var incoming=Unit(new Point2(v.X-prev.X,v.Y-prev.Y));var outgoing=Unit(new Point2(next.X-v.X,next.Y-v.Y));
                 double dot=incoming.X*outgoing.X+incoming.Y*outgoing.Y;double cross=incoming.X*outgoing.Y-incoming.Y*outgoing.X;
-                if(Math.Abs(cross)<1e-8) throw new ArgumentException("Для обрамления удалите коллинеарные короткие рёбра контура.");
+                if(Math.Abs(cross)<1e-8) throw new ArgumentException("Упростите контур обрамления: объедините короткие отрезки, лежащие на одной прямой.");
                 double trim=radius*Math.Sqrt((1-dot)/(1+dot));
-                if(trim>=Math.Min(Distance(prev,v),Distance(v,next))/2-1) throw new ArgumentException("Загиб продольного обрамления не помещается на коротком ребре.");
+                if(trim>=Math.Min(Distance(prev,v),Distance(v,next))/2-1) throw new ArgumentException("Продольному загибу не хватает места. Проверьте контур и радиус загиба.");
                 var a=new Point3(v.X-incoming.X*trim,v.Y-incoming.Y*trim,z);var b=new Point3(v.X+outgoing.X*trim,v.Y+outgoing.Y*trim,z);
                 double sign=Math.Sign(cross);var centre=new Point2(a.X-incoming.Y*radius*sign,a.Y+incoming.X*radius*sign);
                 var bisector=Unit(new Point2((a.X+b.X)/2-centre.X,(a.Y+b.Y)/2-centre.Y));
@@ -220,7 +304,7 @@ namespace SlabReinforcement.Core
         // Used for preview/containment only. Each three-point circular arc is sampled by its actual circle.
         public static IEnumerable<Point3> Sample(IEnumerable<CenterlineSegment> path,double tolerance)
         {
-            if(!GeometryKernel.Finite(tolerance)||tolerance<=0)throw new ArgumentException("Допуск аппроксимации должен быть положительным конечным числом.");
+            if(!GeometryKernel.Finite(tolerance)||tolerance<=0)throw new ArgumentException("Для проверки загибов нужна точность больше нуля.");
             Point3? previous=null;
             foreach(var point in SampleRaw(path,tolerance))
             {
@@ -237,21 +321,21 @@ namespace SlabReinforcement.Core
                 {
                     var a=segment.Start;var m=segment.Midpoint.Value;var b=segment.End;
                     var u=Subtract(m,a);var v=Subtract(b,a);var n=Cross(u,v);double n2=Dot(n,n);
-                    if(n2<=1e-18)throw new ArgumentException("Вырожденная дуга обрамления.");
+                    if(n2<=1e-18)throw new ArgumentException("Не удалось построить загиб обрамления. Проверьте форму стержня.");
                     var cv=Cross(v,n);var cu=Cross(n,u);
                     var centre=Add(a,Multiply(Add(Multiply(cv,Dot(u,u)),Multiply(cu,Dot(v,v))),1/(2*n2)));
                     double r=Math.Sqrt(Dot(Subtract(a,centre),Subtract(a,centre)));
                     var ex=Multiply(Subtract(a,centre),1/r);var normal=Multiply(n,1/Math.Sqrt(n2));var ey=Cross(normal,ex);
                     double sweep=Math.Atan2(Dot(Subtract(b,centre),ey),Dot(Subtract(b,centre),ex));if(sweep<=0)sweep+=2*Math.PI;
                     int count=Math.Max(2,(int)Math.Ceiling(sweep/(2*Math.Acos(Math.Max(-1,Math.Min(1,1-tolerance/r))))));
-                    if(count>100000)throw new ArgumentException("Слишком много точек дуги.");
+                    if(count>100000)throw new ArgumentException("Слишком много точек для проверки загиба. Упростите форму стержня.");
                     for(int i=1;i<count;i++)yield return Add(centre,Multiply(Add(Multiply(ex,Math.Cos(sweep*i/count)),Multiply(ey,Math.Sin(sweep*i/count))),r));
                 }
                 yield return segment.End;
             }
         }
         private static double Distance(Point2 a,Point2 b)=>Math.Sqrt((a.X-b.X)*(a.X-b.X)+(a.Y-b.Y)*(a.Y-b.Y));
-        private static Point2 Unit(Point2 p){double l=Math.Sqrt(p.X*p.X+p.Y*p.Y);if(l<1e-9)throw new ArgumentException("Вырожденное ребро обрамления.");return new Point2(p.X/l,p.Y/l);}
+        private static Point2 Unit(Point2 p){double l=Math.Sqrt(p.X*p.X+p.Y*p.Y);if(l<1e-9)throw new ArgumentException("У стороны контура обрамления нулевая длина. Исправьте контур.");return new Point2(p.X/l,p.Y/l);}
         private static Point3 Add(Point3 a,Point3 b)=>new Point3(a.X+b.X,a.Y+b.Y,a.Z+b.Z);
         private static Point3 Subtract(Point3 a,Point3 b)=>new Point3(a.X-b.X,a.Y-b.Y,a.Z-b.Z);
         private static Point3 Multiply(Point3 a,double s)=>new Point3(a.X*s,a.Y*s,a.Z*s);

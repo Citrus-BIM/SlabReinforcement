@@ -1,0 +1,25 @@
+<Project>
+  <PropertyGroup><ImportDirectoryBuildProps>false</ImportDirectoryBuildProps><ImportDirectoryBuildTargets>false</ImportDirectoryBuildTargets></PropertyGroup>
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework><PlatformTarget>x64</PlatformTarget><LangVersion>latest</LangVersion>
+    <UseWPF>true</UseWPF><Nullable>disable</Nullable><AssemblyName>SlabReinforcement.UnderlayUiSmoke</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ProductRoot Condition="'$(ProductRoot)' == ''">..\SlabReinforcement\bin\R2023</ProductRoot>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="RevitAPI"><HintPath>C:\Program Files\Autodesk\Revit 2023\RevitAPI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="RevitAPIUI"><HintPath>C:\Program Files\Autodesk\Revit 2023\RevitAPIUI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="SlabReinforcement.Core"><HintPath>$(ProductRoot)\SlabReinforcement.Core.dll</HintPath></Reference>
+    <Reference Include="NetTopologySuite"><HintPath>$(ProductRoot)\NetTopologySuite.dll</HintPath></Reference>
+    <Reference Include="System.Web.Extensions" />
+    <Compile Include="UnderlayApplication.cs" />
+    <Compile Include="BackgroundCaptureAudit.cs" />
+    <Compile Include="LayerAlignmentAudit.cs" />
+    <Compile Include="NativeAreaProbe.cs" />
+    <Compile Include="PathProbe.cs" />
+    <Compile Include="NewTemplateNative.cs" />
+    <Compile Include="CurrentPluginPlan.cs" />
+  </ItemGroup>
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

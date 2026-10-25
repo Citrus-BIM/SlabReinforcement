@@ -191,12 +191,13 @@ public class CompositePlanValidatorTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void RectanglePerimeterCanCombineUbarsAndRoundedLongitudinalBars(bool longitudinal)
+    public void RectanglePerimeterMaximumSpacingReportsCornerIntersectionsUnlessAllowed(bool longitudinal)
     {
         var request = PerimeterRequest(); request.UseLongitudinalBars = longitudinal;
         var plan = PerimeterPlanner.Build(request);
         Assert.True(plan.CanCreate, string.Join(";", plan.Diagnostics.Select(d => d.Message)));
-        Assert.Empty(CompositePlanValidator.Validate(plan.Bars));
+        Assert.Contains(CompositePlanValidator.Validate(plan.Bars),d=>d.Code=="COMPOSITE_BAR_COLLISION"&&d.IsBlocking);
+        Assert.DoesNotContain(CompositePlanValidator.Validate(plan.Bars,allowBarIntersections:true),d=>d.IsBlocking);
     }
 
     [Fact]

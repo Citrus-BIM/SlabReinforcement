@@ -17,8 +17,8 @@ namespace SlabReinforcement.Dxf
     {
         public static DxfSource Read(string path)
         {
-            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("A DXF path is required.", nameof(path));
-            if (new FileInfo(path).Length > 512L * 1024 * 1024) throw new InvalidDataException("DXF exceeds the 512 MiB input limit.");
+            if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Выберите исходный файл DXF.", nameof(path));
+            if (new FileInfo(path).Length > 512L * 1024 * 1024) throw new InvalidDataException("Файл DXF больше 512 МиБ. Разделите его на части.");
             var result = new DxfSource();
             var hiddenLayers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var blockFaces = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -42,7 +42,7 @@ namespace SlabReinforcement.Dxf
                     if (type == "EOF") { sawEof = true; continue; }
                     if (section == "TABLES" && type == "LAYER")
                     {
-                        string name = Value(record, 2) ?? throw Error(record, "LAYER has no name.");
+                        string name = Value(record, 2) ?? throw Error(record, "В DXF найден слой без имени. Исправьте исходный файл.");
                         int raw = Integer(record, 62, 7);
                         result.LayerColors[name] = Math.Abs(raw);
                         result.LayerColorKeys[name] = Color(record, 7);
@@ -58,12 +58,12 @@ namespace SlabReinforcement.Dxf
                     if (unsupportedMesh && Integer(record, 67, 0) == 0)
                     {
                         if (section == "ENTITIES")
-                            throw new NotSupportedException("DXF contains unsupported model-space " + type + " mesh geometry. Convert all calculation meshes to direct 3DFACE entities; a partial map cannot be used.");
+                            throw new NotSupportedException("DXF: сетка " + type + " не поддерживается. Преобразуйте сетки в отдельные 3DFACE в пространстве модели.");
                         if (block != null) unsupportedBlockMeshes.Add(block);
                     }
                     if (type == "INSERT" && Integer(record, 67, 0) == 0)
                     {
-                        string reference = Value(record, 2) ?? throw Error(record, "INSERT has no block name.");
+                        string reference = Value(record, 2) ?? throw Error(record, "Вставка в DXF не содержит имени блока. Исправьте исходный файл.");
                         if (section == "ENTITIES") topReferences.Add(reference);
                         else if (block != null)
                         {
@@ -80,7 +80,7 @@ namespace SlabReinforcement.Dxf
                         continue;
                     }
                     if (Integer(record, 67, 0) != 0) { result.IgnoredPaperSpaceFaceCount++; continue; }
-                    if (result.Faces.Count >= 1000000) throw new InvalidDataException("DXF exceeds 1,000,000 direct 3DFACE entities.");
+                    if (result.Faces.Count >= 1000000) throw new InvalidDataException("В DXF больше 1 000 000 поверхностей 3DFACE. Разделите файл на части.");
                     var face = new DxfSourceFace
                     {
                         Id = Value(record, 5) ?? "face-" + (result.Faces.Count + 1).ToString(CultureInfo.InvariantCulture),
@@ -94,13 +94,13 @@ namespace SlabReinforcement.Dxf
                     result.Faces.Add(face);
                 }
             }
-            if (!sawEof) throw new InvalidDataException("The DXF is incomplete: its EOF marker is missing.");
+            if (!sawEof) throw new InvalidDataException("Файл DXF повреждён. Экспортируйте его заново.");
             foreach (string reference in topReferences)
             {
                 if (ContainsFaces(reference, blockFaces, blockReferences, new HashSet<string>(StringComparer.OrdinalIgnoreCase)))
-                    throw new NotSupportedException("Block '" + reference + "' contains 3DFACE geometry. Explode its inserts before reading direct faces; transforms must not be silently omitted.");
+                    throw new NotSupportedException("Блок «" + reference + "»: разбейте вставки блока с 3DFACE, сохранив положение поверхностей.");
                 if (ContainsFaces(reference, unsupportedBlockMeshes, blockReferences, new HashSet<string>(StringComparer.OrdinalIgnoreCase)))
-                    throw new NotSupportedException("Block '" + reference + "' contains unsupported MESH or POLYLINE mesh geometry. Convert it to direct model-space 3DFACE entities; a partial map cannot be used.");
+                    throw new NotSupportedException("Блок «" + reference + "»: преобразуйте MESH/POLYLINE в отдельные 3DFACE в пространстве модели.");
             }
             foreach (var face in result.Faces)
             {
@@ -109,14 +109,14 @@ namespace SlabReinforcement.Dxf
                 {
                     if (result.LayerColorKeys.TryGetValue(face.Layer, out string key)) face.ColorKey = key;
                     else if (face.Layer == "0") face.ColorKey = "ACI:7";
-                    else throw new InvalidDataException("Face '" + face.Id + "' uses undefined layer '" + face.Layer + "' and cannot resolve ByLayer color.");
+                    else throw new InvalidDataException("Поверхность «" + face.Id + "»: отсутствует слой «" + face.Layer + "». Исправьте слой или задайте цвет в DXF.");
                 }
                 face.IsVisible &= !hiddenLayers.Contains(face.Layer);
             }
             if (!result.InsUnits.HasValue || result.InsUnits.Value == 0)
-                result.Warnings.Add("The drawing has no declared length unit; a scale must be supplied explicitly.");
+                result.Warnings.Add("В DXF не указаны единицы длины. Выберите их при загрузке файла.");
             int unresolved = result.Faces.Count(f => f.ColorKey == "ACI:0");
-            if (unresolved > 0) result.Warnings.Add(unresolved + " model-space faces use unresolved ByBlock color (ACI:0).");
+            if (unresolved > 0) result.Warnings.Add(unresolved + " поверхностей: цвет «По блоку» не определён. Задайте цвет в DXF.");
             return result;
         }
 
@@ -139,7 +139,7 @@ namespace SlabReinforcement.Dxf
                 else if (key == "$INSUNITS" && pair.Code == 70)
                 {
                     if (!int.TryParse(pair.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int unit) || unit < 0)
-                        throw new InvalidDataException("Invalid $INSUNITS value at line " + pair.Line + ".");
+                        throw new InvalidDataException("В DXF неверно указаны единицы длины. Строка " + pair.Line + ".");
                     result.InsUnits = unit;
                 }
             }
@@ -152,7 +152,7 @@ namespace SlabReinforcement.Dxf
                 var prefix = new byte[22];
                 int read = stream.Read(prefix, 0, prefix.Length);
                 if (Encoding.ASCII.GetString(prefix, 0, read).StartsWith("AutoCAD Binary DXF", StringComparison.Ordinal))
-                    throw new NotSupportedException("Binary DXF is not supported by the ASCII reader.");
+                    throw new NotSupportedException("Двоичный DXF не поддерживается. Сохраните как текстовый DXF (ASCII).");
             }
             try
             {
@@ -182,9 +182,9 @@ namespace SlabReinforcement.Dxf
                 line++;
                 string value = reader.ReadLine();
                 line++;
-                if (value == null) throw new InvalidDataException("Incomplete DXF group pair at line " + (line - 1) + ".");
+                if (value == null) throw new InvalidDataException("В DXF отсутствует значение. Проверьте строку " + (line - 1) + ".");
                 if (!int.TryParse(codeText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int code))
-                    throw new InvalidDataException("Invalid DXF group code at line " + (line - 1) + ".");
+                    throw new InvalidDataException("В DXF повреждён код записи. Проверьте строку " + (line - 1) + ".");
                 if (code == 0 && record.Count > 0) { yield return record; record = new List<Pair>(); }
                 record.Add(new Pair(code, value.Trim(), line));
             }
@@ -201,7 +201,7 @@ namespace SlabReinforcement.Dxf
             string value = Value(record, code);
             if (value == null && !required) return 0;
             if (value == null || !double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double result) || double.IsNaN(result) || double.IsInfinity(result))
-                throw Error(record, "Invalid or missing coordinate group " + code + ".");
+                throw Error(record, "В DXF отсутствует или неверно записана координата, код " + code + ".");
             return result;
         }
 
@@ -210,7 +210,7 @@ namespace SlabReinforcement.Dxf
             string value = Value(record, code);
             if (value == null) return fallback;
             if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
-                throw Error(record, "Invalid integer group " + code + ".");
+                throw Error(record, "В DXF неверно записано целое число, код " + code + ".");
             return number;
         }
 
@@ -219,11 +219,11 @@ namespace SlabReinforcement.Dxf
             if (Value(record, 420) != null)
             {
                 int rgb = Integer(record, 420, 0);
-                if (rgb < 0 || rgb > 0xffffff) throw Error(record, "Invalid TrueColor value.");
+                if (rgb < 0 || rgb > 0xffffff) throw Error(record, "В DXF неверно записан цвет RGB. Исправьте цвет в исходном файле.");
                 return "#" + rgb.ToString("X6", CultureInfo.InvariantCulture);
             }
             int aci = Math.Abs(Integer(record, 62, defaultAci));
-            if (aci > 256) throw Error(record, "Invalid indexed color.");
+            if (aci > 256) throw Error(record, "В DXF указан недопустимый номер цвета. Исправьте цвет в исходном файле.");
             return "ACI:" + aci.ToString(CultureInfo.InvariantCulture);
         }
 
@@ -234,7 +234,7 @@ namespace SlabReinforcement.Dxf
         }
 
         private static InvalidDataException Error(List<Pair> record, string message) =>
-            new InvalidDataException(message + " DXF record at line " + (record.Count == 0 ? 0 : record[0].Line) + ".");
+            new InvalidDataException(message + " Строка DXF: " + (record.Count == 0 ? 0 : record[0].Line) + ".");
 
         private readonly struct Pair
         {

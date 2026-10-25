@@ -5,7 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SlabReinforcement.Core\SlabReinforcement.Core.csproj" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
-    <None Update="netDxf-MIT.txt" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="netDxf-MIT.txt" LogicalName="SlabReinforcement.Dxf.Licenses.netDxf-MIT.txt" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 </Project>

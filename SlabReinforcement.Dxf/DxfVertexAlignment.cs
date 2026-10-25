@@ -9,7 +9,7 @@ namespace SlabReinforcement.Dxf
     {
         public static int Validate(IEnumerable<Point3> expected, IEnumerable<Point3> placed, double toleranceMm)
         {
-            if (double.IsNaN(toleranceMm) || double.IsInfinity(toleranceMm) || toleranceMm <= 0) throw new ArgumentOutOfRangeException(nameof(toleranceMm));
+            if (double.IsNaN(toleranceMm) || double.IsInfinity(toleranceMm) || toleranceMm <= 0) throw new ArgumentOutOfRangeException(nameof(toleranceMm), "Допуск сравнения DXF должен быть больше нуля.");
             var sourcePoints=expected.ToList();var placedPoints=placed.ToList();
             int count=Match(sourcePoints,placedPoints,toleranceMm);
             Match(placedPoints,sourcePoints,toleranceMm);
@@ -24,7 +24,7 @@ namespace SlabReinforcement.Dxf
                 if (!actual.TryGetValue(cell, out var bucket)) actual[cell] = bucket = new List<Point3>();
                 bucket.Add(point);
             }
-            if (actual.Count == 0) throw new ArgumentException("В подложке нет сетки для проверки исходного DXF.");
+            if (actual.Count == 0) throw new ArgumentException("В подложке нет сетки для сравнения с DXF.");
             var seen = new HashSet<Cell>();
             foreach (var point in expected)
             {
@@ -37,9 +37,9 @@ namespace SlabReinforcement.Dxf
                             if (actual.TryGetValue(cell.Offset(dx, dy, dz), out var bucket))
                                 foreach (var candidate in bucket)
                                     if (DistanceSquared(point, candidate) <= toleranceMm * toleranceMm) { found = true; break; }
-                if (!found) throw new ArgumentException("Исходный DXF не совпадает полностью с геометрией выбранной подложки (допуск " + toleranceMm + " мм). Проверьте файл, единицы, масштаб, состав и обновление связи. Расчёт отменён.");
+                if (!found) throw new ArgumentException("DXF не совпал с подложкой (допуск " + toleranceMm + " мм). Проверьте файл, единицы, масштаб и обновите связь.");
             }
-            if (seen.Count < 3) throw new ArgumentException("В DXF недостаточно различных вершин для проверки размещения.");
+            if (seen.Count < 3) throw new ArgumentException("В DXF меньше трёх точек. Совпадение с подложкой не проверено.");
             return seen.Count;
         }
         private static double DistanceSquared(Point3 a, Point3 b) => (a.X-b.X)*(a.X-b.X)+(a.Y-b.Y)*(a.Y-b.Y)+(a.Z-b.Z)*(a.Z-b.Z);
@@ -48,7 +48,7 @@ namespace SlabReinforcement.Dxf
             private readonly long x, y, z;
             public Cell(Point3 point, double size)
             {
-                foreach (var v in new[] { point.X, point.Y, point.Z }) if (double.IsNaN(v) || double.IsInfinity(v) || Math.Abs(v/size)>long.MaxValue-2) throw new ArgumentException("Недопустимые координаты DXF.");
+                foreach (var v in new[] { point.X, point.Y, point.Z }) if (double.IsNaN(v) || double.IsInfinity(v) || Math.Abs(v/size)>long.MaxValue-2) throw new ArgumentException("В DXF некорректные координаты. Проверьте исходный файл и единицы.");
                 x = (long)Math.Floor(point.X/size); y = (long)Math.Floor(point.Y/size); z = (long)Math.Floor(point.Z/size);
             }
             private Cell(long a, long b, long c) { x=a;y=b;z=c; }

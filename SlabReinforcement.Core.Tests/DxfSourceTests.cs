@@ -42,7 +42,7 @@ public class DxfSourceTests
 
         Assert.Equal("ACI:0", face.OriginalColorKey);
         Assert.Equal("ACI:0", face.ColorKey);
-        Assert.Contains(source.Warnings, warning => warning.Contains("ByBlock", StringComparison.Ordinal));
+        Assert.Contains(source.Warnings, warning => warning.Contains("По блоку", StringComparison.Ordinal));
     }
 
     [Theory]
@@ -70,7 +70,7 @@ public class DxfSourceTests
         Assert.Equal(units, source.InsUnits);
         Assert.Equal(1210.25, Assert.Single(source.Faces).Vertices[1].X);
         Assert.Equal(!units.HasValue || units == 0,
-            source.Warnings.Any(warning => warning.Contains("length unit", StringComparison.Ordinal)));
+            source.Warnings.Any(warning => warning.Contains("единицы длины", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -117,7 +117,7 @@ public class DxfSourceTests
         var exception = Assert.Throws<NotSupportedException>(() =>
             WithFile(Encoding.ASCII.GetBytes("AutoCAD Binary DXF\r\n\x1a\0"), DxfFaceSource.Read));
 
-        Assert.Contains("Binary DXF", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Двоичный DXF", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

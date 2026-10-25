@@ -1,4 +1,4 @@
-using NetTopologySuite.Geometries;
+﻿using NetTopologySuite.Geometries;
 using NetTopologySuite.Operation.Union;
 using SlabReinforcement.Core;
 using Xunit;
@@ -70,7 +70,7 @@ public class EquivalentZoneTests
     [InlineData("no-type")]
     [InlineData("empty-type")]
     [InlineData("blank-type")]
-    public void DifferentOrUnidentifiedAssignmentsRemainSeparate(string difference)
+    public void ConnectedManualAssignmentsChooseOneOriginalWinner(string difference)
     {
         var request = Request(true, false);
         var changed = request.Specifications.Single(spec => spec.ColorKey == "red");
@@ -90,9 +90,15 @@ public class EquivalentZoneTests
             case "blank-type": foreach (var spec in request.Specifications) spec.TypeKey = " "; break;
         }
         var plan = ReinforcementPlanner.Build(request);
-        Assert.Contains(plan.Bars, bar => bar.SpecKey == "a-blue");
-        Assert.Contains(plan.Bars, bar => bar.SpecKey == "z-red");
-        Assert.DoesNotContain(plan.Bars, bar => bar.Start.X < 300 && bar.End.X > 2700);
+        Assert.True(plan.CanCreate, Messages(plan));
+        var winner = request.Specifications.OrderByDescending(s => s.DiameterMm).ThenBy(s => s.SpacingMm)
+            .ThenBy(s => s.TypeKey ?? "", StringComparer.Ordinal).ThenBy(s => s.Key, StringComparer.Ordinal).First();
+        Assert.Equal(7, plan.Bars.Count);
+        Assert.All(plan.Bars, bar => {
+            Assert.Equal(winner.Key, bar.SpecKey);
+            Assert.Equal(300 - winner.AnchorageMm, bar.Start.X, 6);
+            Assert.Equal(2700 + winner.AnchorageMm, bar.End.X, 6);
+        });
     }
 
     [Fact]
@@ -106,7 +112,7 @@ public class EquivalentZoneTests
     }
 
     [Fact]
-    public void MergedColorsDoNotEraseAStrongerOverlappingZone()
+    public void OverlappingLargerDiameterPromotesTheWholeConnectedLine()
     {
         var request = Request(true, true);
         foreach (var spec in request.Specifications) spec.AnchorageMm = 0;
@@ -128,8 +134,8 @@ public class EquivalentZoneTests
         Assert.Contains(actual.Bars, bar => bar.SpecKey == "strong");
         Assert.All(actual.Bars.Where(bar => bar.SpecKey == "strong"), bar =>
         {
-            Assert.Equal(1000, bar.Start.X, 6);
-            Assert.Equal(2000, bar.End.X, 6);
+            Assert.Equal(300, bar.Start.X, 6);
+            Assert.Equal(2700, bar.End.X, 6);
         });
         Assert.DoesNotContain(actual.Bars, bar => bar.SpecKey != "strong" && bar.Start.X < 2000 && bar.End.X > 1000);
         Assert.Equal(2400 * 1400, DemandGeometry(actual).Area, 5);

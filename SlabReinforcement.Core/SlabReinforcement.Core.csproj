@@ -12,6 +12,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="NetTopologySuite" Version="2.6.0" />
+    <EmbeddedResource Include="..\docs\licenses\NetTopologySuite.md" LogicalName="SlabReinforcement.Core.Licenses.NetTopologySuite.md" />
+    <EmbeddedResource Include="..\docs\licenses\DotNetRuntime.txt" LogicalName="SlabReinforcement.Core.Licenses.DotNetRuntime.txt" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 </Project>

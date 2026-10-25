@@ -1,4 +1,4 @@
-using NetTopologySuite.Geometries;
+﻿using NetTopologySuite.Geometries;
 using NetTopologySuite.Operation.Union;
 using SlabReinforcement.Core;
 using Xunit;
@@ -77,10 +77,10 @@ public class RecheckAlgorithmTests
     }
 
     [Fact]
-    public void AdjacentColorsWithoutExplicitTypeIdentityRemainSeparate()
+    public void ConnectedColorsWithoutTypeIdentityUseStableOriginalSpecification()
     {
-        // Matching numbers do not identify interchangeable types. Callers that omit
-        // TypeKey retain separate colors and the final collision protection.
+        // Without type identity the stable original key breaks the diameter/pitch tie.
+        // The selected specification still owns all placement and anchorage data.
         var request = new PlanRequest
         {
             Slabs = new() { new() { Shell = Rect(0, 0, 3000, 2000) } },
@@ -97,11 +97,14 @@ public class RecheckAlgorithmTests
             Options = new() { EdgeCoverMm = 25, MergeToleranceMm = 0, RoundIncrementMm = 1 }
         };
         var split = ReinforcementPlanner.Build(request);
-        Assert.False(split.CanCreate);
-        Assert.Contains(split.Diagnostics, d => d.Code == "FINAL_BAR_COLLISION");
-        Assert.Equal(14, split.Bars.Count);
-        Assert.Equal(7, split.Bars.Where(a => a.SpecKey == "left").Count(a => split.Bars.Any(b =>
-            b.SpecKey == "right" && a.Start.Y == b.Start.Y && a.End.X - b.Start.X == 200)));
+        Assert.True(split.CanCreate, Messages(split));
+        Assert.DoesNotContain(split.Diagnostics, d => d.Code == "FINAL_BAR_COLLISION");
+        Assert.Equal(7, split.Bars.Count);
+        Assert.All(split.Bars, bar => {
+            Assert.Equal("left", bar.SpecKey);
+            Assert.Equal(200, bar.Start.X);
+            Assert.Equal(2800, bar.End.X);
+        });
         request.Faces[1].ColorKey = "red";
         request.Specifications.RemoveAt(1);
         var merged = ReinforcementPlanner.Build(request);

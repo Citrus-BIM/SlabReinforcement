@@ -23,8 +23,10 @@ namespace SlabReinforcement.Core
         /// Start/End straight bars. The first existingBarCount entries describe existing
         /// bars: only their interactions with new bars are checked. Does not infer
         /// material, anchorage, holes, capacity or a bar's self-intersection.
+        /// When intersections are allowed, pairwise clearance checks are skipped.
+        /// Invalid geometry, work limits and complete duplicate bars remain blocking.
         /// </summary>
-        public static List<PlanDiagnostic> Validate(IEnumerable<PlannedBar> bars, CancellationToken cancellationToken = default, int existingBarCount = 0)
+        public static List<PlanDiagnostic> Validate(IEnumerable<PlannedBar> bars, CancellationToken cancellationToken = default, int existingBarCount = 0, bool allowBarIntersections = false)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (bars == null) throw new ArgumentNullException(nameof(bars));
@@ -35,7 +37,7 @@ namespace SlabReinforcement.Core
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (input.Count == MaximumBars)
-                    return new List<PlanDiagnostic> { Error("COMPOSITE_PLAN_TOO_LARGE", "Число стержней превышает 200 000.") };
+                    return new List<PlanDiagnostic> { Error("COMPOSITE_PLAN_TOO_LARGE", "В расчёте более 200 000 стержней. Увеличьте шаг или уменьшите выбранную область.") };
                 input.Add(bar);
             }
             if (existingBarCount > input.Count) throw new ArgumentOutOfRangeException(nameof(existingBarCount));
@@ -51,13 +53,14 @@ namespace SlabReinforcement.Core
                 }
                 catch (PlanLimitException)
                 {
-                    diagnostics.Add(Error("COMPOSITE_PLAN_TOO_LARGE", "Число участков для проверки превышает 1 000 000."));
+                    diagnostics.Add(Error("COMPOSITE_PLAN_TOO_LARGE", "Нужно проверить более 1 000 000 участков стержней. Уменьшите выбранную область."));
                     return diagnostics;
                 }
             }
             // Invalid bars must never disappear from a partially successful combined result.
             if (diagnostics.Count > 0) return diagnostics;
             if (input.Count <= 1 || existingBarCount == input.Count) return diagnostics;
+            if (allowBarIntersections) return ValidateDuplicates(input, existingBarCount, cancellationToken);
 
             var index = new STRtree<Piece>();
             foreach (var piece in pieces) index.Insert(piece.Bounds, piece);
@@ -77,8 +80,8 @@ namespace SlabReinforcement.Core
                     // a densely folded curve must not cause quadratic unbounded work.
                     if (visited > MaximumBroadPhaseVisits)
                     {
-                        AddPairDiagnostics(diagnostics, collisions, uncertain);
-                        diagnostics.Add(Error("COMPOSITE_PLAN_TOO_LARGE", "Проверка остановлена: более 10 000 000 пересекающихся габаритов участков. Полная проверка коллизий не завершена."));
+                        AddPairDiagnostics(diagnostics, collisions, uncertain, allowBarIntersections);
+                        diagnostics.Add(Error("COMPOSITE_PLAN_TOO_LARGE", "Проверка остановлена: более 10 000 000 пар участков. Уменьшите область."));
                         return diagnostics;
                     }
                     if (other.Bar >= piece.Bar || !piece.OverlapsZ(other)) continue;
@@ -86,8 +89,8 @@ namespace SlabReinforcement.Core
                     if (collisions.Contains(key)) continue;
                     if (++candidates > MaximumCandidatePairs)
                     {
-                        AddPairDiagnostics(diagnostics, collisions, uncertain);
-                        diagnostics.Add(Error("COMPOSITE_PLAN_TOO_LARGE", "Проверка остановлена: более 2 000 000 близких пар участков. Полная проверка коллизий не завершена."));
+                        AddPairDiagnostics(diagnostics, collisions, uncertain, allowBarIntersections);
+                        diagnostics.Add(Error("COMPOSITE_PLAN_TOO_LARGE", "Проверка пересечений остановлена: более 2 000 000 пар. Уменьшите область."));
                         return diagnostics;
                     }
                     if ((candidates & 255) == 0) cancellationToken.ThrowIfCancellationRequested();
@@ -96,30 +99,114 @@ namespace SlabReinforcement.Core
                     else if (result == Intersection.Uncertain) uncertain.Add(key);
                 }
             }
-            AddPairDiagnostics(diagnostics, collisions, uncertain);
+            AddPairDiagnostics(diagnostics, collisions, uncertain, allowBarIntersections);
             return diagnostics;
         }
 
-        private static void AddPairDiagnostics(List<PlanDiagnostic> diagnostics, HashSet<long> collisions, HashSet<long> uncertain)
+        private static void AddPairDiagnostics(List<PlanDiagnostic> diagnostics, HashSet<long> collisions, HashSet<long> uncertain, bool allowBarIntersections)
         {
             if (collisions.Count > 0)
-                diagnostics.Add(Error("COMPOSITE_BAR_COLLISION", "Объёмное пересечение стержней: " + collisions.Count + " пар. " + Examples(collisions)));
+                diagnostics.Add(new PlanDiagnostic
+                {
+                    Code = "COMPOSITE_BAR_COLLISION", IsBlocking = !allowBarIntersections,
+                    Message = "Стержни пересекаются: " + collisions.Count + " пар. " + Examples(collisions)
+                        + (allowBarIntersections ? " Создание разрешено. Проверьте пересечения." : string.Empty)
+                });
             if (uncertain.Count > 0)
-                diagnostics.Add(Error("COMPOSITE_CURVE_CLEARANCE_UNCERTAIN", "Не подтверждён зазор у кривых или торцов: " + uncertain.Count + " пар. Точность аппроксимации дуги — 0.02 мм. " + Examples(uncertain)));
+                diagnostics.Add(Error("COMPOSITE_CURVE_CLEARANCE_UNCERTAIN", "Не удалось проверить расстояние между загибами или концами стержней: " + uncertain.Count + " пар. Точность проверки дуги — 0.02 мм. " + Examples(uncertain)));
         }
 
-        private static string Examples(IEnumerable<long> keys) => "Номера в плане: " + string.Join(", ", keys.OrderBy(k => k).Take(8)
+        private static string Examples(IEnumerable<long> keys) => "Пары: " + string.Join(", ", keys.OrderBy(k => k).Take(8)
             .Select(k => (k % MaximumBars + 1).ToString(CultureInfo.InvariantCulture) + "/" + (k / MaximumBars + 1).ToString(CultureInfo.InvariantCulture))) + ".";
 
         private static PlanDiagnostic Error(string code, string message, string sourceId = null) => new PlanDiagnostic { Code = code, Message = message, SourceId = sourceId, IsBlocking = true };
+
+        // Whole-path identity is independent of volumetric intersections. One hash lookup
+        // per bar avoids turning a dense but allowed grid into a quadratic collision scan.
+        // Coordinate rounding removes sub-micrometre noise from Revit frame transforms;
+        // segment partitioning must agree, as in ExistingReinforcementMatcher.
+        internal static List<PlanDiagnostic> ValidateDuplicates(IEnumerable<PlannedBar> bars, int existingBarCount, CancellationToken token)
+        {
+            var known = new Dictionary<PlannedBar, int>(new DuplicateBarComparer(token));
+            var examples = new List<string>();
+            int ordinal = 0, duplicates = 0;
+            foreach (var bar in bars)
+            {
+                token.ThrowIfCancellationRequested();
+                if (known.TryGetValue(bar, out int previous))
+                {
+                    if (ordinal >= existingBarCount)
+                    {
+                        duplicates++;
+                        if (examples.Count < 8) examples.Add((previous + 1).ToString(CultureInfo.InvariantCulture) + "/" + (ordinal + 1).ToString(CultureInfo.InvariantCulture));
+                    }
+                }
+                else known.Add(bar, ordinal);
+                ordinal++;
+            }
+            return duplicates == 0 ? new List<PlanDiagnostic>() : new List<PlanDiagnostic> {
+                Error("DUPLICATE_BAR", "Полностью совпадающие стержни: " + duplicates.ToString(CultureInfo.InvariantCulture)
+                    + ". Пары: " + string.Join(", ", examples) + ".") };
+        }
+
+        private sealed class DuplicateBarComparer : IEqualityComparer<PlannedBar>
+        {
+            private readonly CancellationToken _token;
+            public DuplicateBarComparer(CancellationToken token) { _token = token; }
+
+            public bool Equals(PlannedBar a, PlannedBar b)
+            {
+                int count = Count(a);
+                if (count != Count(b) || Math.Round(a.Placement.ModelDiameterMm, 6) != Math.Round(b.Placement.ModelDiameterMm, 6)) return false;
+                bool forward = true, reverse = true;
+                for (int i = 0; i < count && (forward || reverse); i++)
+                {
+                    if ((i & 255) == 0) _token.ThrowIfCancellationRequested();
+                    var segment = Segment(a, i);
+                    forward = forward && Same(segment, Segment(b, i));
+                    reverse = reverse && Same(segment, Segment(b, count - 1 - i));
+                }
+                return forward || reverse;
+            }
+
+            public int GetHashCode(PlannedBar bar)
+            {
+                // Commutative segment hashes support reversal without copying a path.
+                // Equality always checks coordinates, so hash collisions are harmless.
+                int hash = Math.Round(bar.Placement.ModelDiameterMm, 6).GetHashCode();
+                unchecked
+                {
+                    for (int i = 0; i < Count(bar); i++)
+                    {
+                        if ((i & 255) == 0) _token.ThrowIfCancellationRequested();
+                        var s = Segment(bar, i);
+                        hash += (Key(s.Start).GetHashCode() + Key(s.End).GetHashCode()) * 397
+                            + (s.Midpoint.HasValue ? Key(s.Midpoint.Value).GetHashCode() : 0);
+                    }
+                }
+                return hash;
+            }
+
+            private static int Count(PlannedBar bar) => bar.Centerline == null || bar.Centerline.Count == 0 ? 1 : bar.Centerline.Count;
+            private static CenterlineSegment Segment(PlannedBar bar, int i) => bar.Centerline != null && bar.Centerline.Count > 0
+                ? bar.Centerline[i] : new CenterlineSegment {
+                    Start = new Point3(bar.Start.X, bar.Start.Y, bar.Placement.ElevationMm),
+                    End = new Point3(bar.End.X, bar.End.Y, bar.Placement.ElevationMm) };
+            private static (double, double, double) Key(Point3 p) => (Math.Round(p.X, 6), Math.Round(p.Y, 6), Math.Round(p.Z, 6));
+            private static bool Same(CenterlineSegment a, CenterlineSegment b) =>
+                a.Midpoint.HasValue == b.Midpoint.HasValue
+                && (!a.Midpoint.HasValue || Key(a.Midpoint.Value).Equals(Key(b.Midpoint.Value)))
+                && (Key(a.Start).Equals(Key(b.Start)) && Key(a.End).Equals(Key(b.End))
+                    || Key(a.Start).Equals(Key(b.End)) && Key(a.End).Equals(Key(b.Start)));
+        }
 
         private static void Expand(PlannedBar bar, int id, List<Piece> pieces, CancellationToken token)
         {
             if (bar?.Placement == null || !Finite(bar.Placement.ModelDiameterMm)
                 || bar.Placement.ModelDiameterMm <= ContactToleranceMm * 4 || bar.Placement.ModelDiameterMm > 1e9)
-                throw new InvalidGeometryException("не задан положительный физический диаметр.");
+                throw new InvalidGeometryException("не удалось определить диаметр. Проверьте тип арматуры.");
             var radius = bar.Placement.ModelDiameterMm / 2;
-            if (!Finite(bar.Placement.ElevationMm)) throw new InvalidGeometryException("высота не является конечным числом.");
+            if (!Finite(bar.Placement.ElevationMm)) throw new InvalidGeometryException("не удалось определить высоту.");
             if (bar.Centerline == null || bar.Centerline.Count == 0)
             {
                 var start = new V(bar.Start.X, bar.Start.Y, bar.Placement.ElevationMm);
@@ -133,11 +220,11 @@ namespace SlabReinforcement.Core
             foreach (var segment in bar.Centerline)
             {
                 token.ThrowIfCancellationRequested();
-                if (segment == null) throw new InvalidGeometryException("отсутствует участок оси.");
+                if (segment == null) throw new InvalidGeometryException("не найдена часть стержня.");
                 var start = new V(segment.Start); var end = new V(segment.End);
                 ValidateLine(start, end);
                 if (previous.HasValue && (previous.Value - start).Length > ContactToleranceMm)
-                    throw new InvalidGeometryException("участки оси не соединены.");
+                    throw new InvalidGeometryException("в стержне есть разрыв.");
                 previous = end;
                 if (!segment.Midpoint.HasValue) AddPiece(new Piece(id, start, end, radius, 0), pieces);
                 else ExpandArc(id, start, new V(segment.Midpoint.Value), end, radius, pieces, token);
@@ -147,16 +234,16 @@ namespace SlabReinforcement.Core
         private static void ValidateLine(V start, V end)
         {
             if (!start.IsFinite || !end.IsFinite || (end - start).Length <= ContactToleranceMm)
-                throw new InvalidGeometryException("ось содержит нечисловые координаты или нулевую длину.");
+                throw new InvalidGeometryException("неверные координаты или нулевая длина.");
             // Coordinates farther than 1,000 km from the local origin compromise the
             // requested micrometre contact tolerance; require a proper local frame.
             if (start.MaxAbs > 1e9 || end.MaxAbs > 1e9)
-                throw new InvalidGeometryException("координаты превышают допустимый диапазон локальной системы ±1 000 000 000 мм.");
+                throw new InvalidGeometryException("координаты вне ±1 000 000 000 мм от плиты. Проверьте положение.");
         }
 
         private static void ExpandArc(int id, V start, V middle, V end, double radius, List<Piece> pieces, CancellationToken token)
         {
-            if (!middle.IsFinite || middle.MaxAbs > 1e9) throw new InvalidGeometryException("неверная промежуточная точка дуги.");
+            if (!middle.IsFinite || middle.MaxAbs > 1e9) throw new InvalidGeometryException("не удалось определить форму загиба.");
             var a = middle - start; var b = end - start; var cross = V.Cross(a, b);
             var crossSquared = cross.LengthSquared;
             if (a.Length <= ContactToleranceMm || crossSquared <= a.LengthSquared * b.LengthSquared * 1e-20)

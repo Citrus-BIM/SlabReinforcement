@@ -9,13 +9,14 @@ using System.Windows.Media;
 
 namespace SlabReinforcement
 {
-    /// <summary>Retained geometry batches: one WPF element for the whole plan, including every planned bar.</summary>
+    /// <summary>One retained drawing of every actual background, framing and zone bar.</summary>
     public sealed class SlabPreviewCanvas : FrameworkElement
     {
         private sealed class ColorGeometry
         {
             public StreamGeometry Geometry;
             public Brush Brush;
+            public double StrokeWidth = 1.25;
         }
 
         private readonly List<StreamGeometry> _slabs = new List<StreamGeometry>();
@@ -28,6 +29,10 @@ namespace SlabReinforcement
         private Point _lastMouse;
         private bool _panning;
         private bool _fitOnResize = true;
+        private bool _hasPlan;
+        private ReinforcementPlan _plan;
+        private PreviewScope _scope = PreviewScope.All;
+        public ReinforcementPlan DisplayedPlan { get; private set; }
         private static readonly Brush BackgroundBrush = FrozenBrush(Color.FromRgb(249, 250, 252));
         private static readonly Brush SourceBackgroundBrush = FrozenBrush(Color.FromRgb(232, 236, 242));
         private static readonly Brush OutlineBrush = FrozenBrush(Color.FromRgb(95, 108, 126));
@@ -48,6 +53,9 @@ namespace SlabReinforcement
             _holes.Clear();
             _faces.Clear();
             _bars.Clear();
+            _hasPlan = false;
+            _plan = null;
+            DisplayedPlan = null;
             _bounds = Rect.Empty;
             foreach (PolygonInput polygon in context.Slabs ?? new List<PolygonInput>())
             {
@@ -75,16 +83,40 @@ namespace SlabReinforcement
 
         public void SetPlan(ReinforcementPlan plan)
         {
+            _plan = plan;
+            RebuildBars();
+        }
+
+        public void SetScope(PreviewScope scope)
+        {
+            if (_scope == scope) return;
+            _scope = scope;
+            RebuildBars();
+        }
+
+        private void RebuildBars()
+        {
+            var plan = PreviewProjection.Select(_plan, _scope);
+            DisplayedPlan = plan;
             _bars.Clear();
+            _hasPlan = false;
             if (plan != null)
             {
-                // No decimation or clipping: these are the same segments accepted by the command.
-                foreach (IGrouping<string, PlannedBar> color in plan.Bars.GroupBy(b => b.ColorKey ?? string.Empty))
+                var items = plan.ReferenceBars.Select(b => new { Bar = b, Existing = true })
+                    .Concat(plan.Bars.Select(b => new { Bar = b, Existing = false })).ToList();
+                var visible = SchematicPreviewBars.Select(items.Select(item => item.Bar));
+                _hasPlan = visible.Count > 0;
+                foreach (var color in items.Where(item => visible.Contains(item.Bar))
+                    .GroupBy(item => new
+                    {
+                        Color = item.Bar.Placement?.Component == "Background" ? "RGB(52, 130, 164)" : item.Bar.ColorKey ?? string.Empty,
+                        item.Existing, Component = item.Bar.Placement?.Component
+                    }).OrderBy(group => group.Key.Component == "Background" ? 0 : group.Key.Component == "PerimeterU" ? 1 : 2))
                 {
                     var geometry = new StreamGeometry();
                     using (StreamGeometryContext drawing = geometry.Open())
                     {
-                        foreach (PlannedBar bar in color)
+                        foreach (PlannedBar bar in color.Select(item => item.Bar))
                         {
                             if (bar.Centerline != null && bar.Centerline.Count > 0)
                             {
@@ -102,7 +134,10 @@ namespace SlabReinforcement
                         }
                     }
                     geometry.Freeze();
-                    _bars.Add(new ColorGeometry { Geometry = geometry, Brush = ColorBrush(color.Key, 255, true) });
+                    bool background = color.Key.Component == "Background";
+                    byte alpha = color.Key.Existing ? (byte)70 : background ? (byte)115 : (byte)255;
+                    _bars.Add(new ColorGeometry { Geometry = geometry, Brush = ColorBrush(color.Key.Color, alpha, true),
+                        StrokeWidth = background ? 0.75 : 1.25 });
                 }
             }
             InvalidateVisual();
@@ -142,19 +177,22 @@ namespace SlabReinforcement
             drawing.DrawRectangle(_slabs.Count == 0 ? SourceBackgroundBrush : BackgroundBrush, null, new Rect(RenderSize));
             if (_bounds.IsEmpty)
             {
-                DrawText(drawing, "Геометрия плиты не загружена", new Point(24, 24), LabelBrush, 13);
+                DrawText(drawing, "Контур плиты не загружен", new Point(24, 24), LabelBrush, 13);
                 return;
             }
             drawing.PushClip(new RectangleGeometry(new Rect(RenderSize)));
             drawing.PushTransform(new MatrixTransform(new Matrix(_scale, 0, 0, -_scale, _offset.X, _offset.Y)));
             var outlinePen = new Pen(OutlineBrush, 1.4 / _scale);
             foreach (StreamGeometry slab in _slabs) drawing.DrawGeometry(Brushes.White, null, slab);
-            foreach (ColorGeometry face in _faces) drawing.DrawGeometry(face.Brush, null, face.Geometry);
+            if (_scope != PreviewScope.Background)
+                foreach (ColorGeometry face in _faces) drawing.DrawGeometry(face.Brush, null, face.Geometry);
             // Openings remain explicit even where an untrimmed CAD face crosses them.
             foreach (StreamGeometry hole in _holes) drawing.DrawGeometry(BackgroundBrush, null, hole);
-            foreach (ColorGeometry bars in _bars) drawing.DrawGeometry(null, new Pen(bars.Brush, 1.25 / _scale), bars.Geometry);
+            foreach (ColorGeometry bars in _bars) drawing.DrawGeometry(null, new Pen(bars.Brush, bars.StrokeWidth / _scale), bars.Geometry);
             foreach (StreamGeometry slab in _slabs) drawing.DrawGeometry(null, outlinePen, slab);
             drawing.Pop();
+            if (_hasPlan) DrawText(drawing, _scope == PreviewScope.Background ? "Фон · вид сверху · все ряды" :
+                _scope == PreviewScope.Zones ? "Зоны · вид сверху · все ряды" : "Вид сверху · все ряды", new Point(20, 14), LabelBrush, 11);
             DrawAxes(drawing);
             DrawScale(drawing);
             drawing.Pop();

@@ -63,6 +63,9 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 
+# Root compatibility binaries target Revit 2023; newer runtime manifests belong in bin/R20xx.
+/SlabReinforcement.deps.json
+
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
 

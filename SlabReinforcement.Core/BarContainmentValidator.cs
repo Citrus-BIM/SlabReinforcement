@@ -29,7 +29,7 @@ namespace SlabReinforcement.Core
             {
                 if (bars == null || slabs == null || !Finite(thicknessMm) || thicknessMm <= 0
                     || new[] { topCoverMm, bottomCoverMm, sideCoverMm }.Any(v => !Finite(v) || v < 0))
-                    throw new ArgumentException("Не заданы плита, стержни, толщина или защитные слои.");
+                    throw new ArgumentException("Для проверки нужны плита, стержни, толщина плиты и защитные слои.");
                 var hosts = new List<Geometry>(); long vertices = 0;
                 foreach (var slab in slabs)
                 {
@@ -39,7 +39,7 @@ namespace SlabReinforcement.Core
                     if (hosts.Count >= GeometryKernel.MaximumPolygons || vertices > GeometryKernel.MaximumVertices) throw new LimitException();
                     hosts.Add(GeometryKernel.ReadPolygon(slab));
                 }
-                if (hosts.Count == 0) throw new ArgumentException("Не задан бетон плиты.");
+                if (hosts.Count == 0) throw new ArgumentException("Не найден контур плиты для проверки стержней.");
                 var host = GeometryKernel.Union(hosts);
                 var prepared = PreparedGeometryFactory.Prepare(host);
                 var boundary = new IndexedFacetDistance(host.Boundary);
@@ -51,7 +51,7 @@ namespace SlabReinforcement.Core
                     var source = count.ToString(CultureInfo.InvariantCulture);
                     if (bar?.Placement == null || !Finite(bar.Placement.ModelDiameterMm) || bar.Placement.ModelDiameterMm <= Epsilon * 4
                         || bar.Placement.ModelDiameterMm > 1e9 || !Finite(bar.Placement.ElevationMm))
-                        throw new ArgumentException("Стержень " + source + ": не заданы физический диаметр или высота.");
+                        throw new ArgumentException("Стержень " + source + ": не удалось определить диаметр или высоту.");
                     var radius = bar.Placement.ModelDiameterMm / 2;
                     var path = bar.Centerline;
                     if (path == null || path.Count == 0) path = new List<CenterlineSegment> { new CenterlineSegment
@@ -66,7 +66,7 @@ namespace SlabReinforcement.Core
                         var a = new V(segment.Start); var b = new V(segment.End);
                         if (!a.Valid || !b.Valid || (a - b).Length <= Epsilon
                             || previous.HasValue && (previous.Value - a).Length > Epsilon)
-                            throw new ArgumentException("Ось стержня " + source + " вырождена, разорвана или содержит недопустимые координаты.");
+                            throw new ArgumentException("Стержень " + source + " имеет нулевую длину, разрыв или неверные координаты.");
                         previous = b;
                         var points = new List<V> { a, b };
                         double minZ = Math.Min(a.Z, b.Z), maxZ = Math.Max(a.Z, b.Z), error = 0;
@@ -86,8 +86,8 @@ namespace SlabReinforcement.Core
                         else if (error > 0 && distance <= clearance + error + Epsilon) uncertain = true;
                         else if (error == 0 && distance < clearance - Epsilon) containmentFailure = true;
                     }
-                    if (containmentFailure) result.Add(Error("ACTUAL_BAR_CONTAINMENT", "Фактический стержень " + source + " выходит из бетона или нарушает полный защитный слой с учётом физического радиуса.", source));
-                    else if (uncertain) result.Add(Error("ACTUAL_CURVE_COVER_UNCERTAIN", "Зазор фактической дуги стержня " + source + " не подтверждён с точностью 0.01 мм; создание не принято.", source));
+                    if (containmentFailure) result.Add(Error("ACTUAL_BAR_CONTAINMENT", "Стержень " + source + " выходит за плиту или нарушает защитный слой. Проверьте положение.", source));
+                    else if (uncertain) result.Add(Error("ACTUAL_CURVE_COVER_UNCERTAIN", "Не удалось проверить защитный слой у загиба стержня " + source + " с точностью 0.01 мм. Создание остановлено.", source));
                     if (result.Count >= 100)
                     {
                         result.Add(Error("ACTUAL_CONTAINMENT_LIMIT", "Обнаружено не менее 100 нарушений защитного слоя. Проверка остановлена."));
@@ -95,21 +95,21 @@ namespace SlabReinforcement.Core
                     }
                 }
             }
-            catch (LimitException) { result.Add(Error("ACTUAL_CONTAINMENT_LIMIT", "Превышен лимит стержней, контуров или точек при проверке фактического защитного слоя.")); }
+            catch (LimitException) { result.Add(Error("ACTUAL_CONTAINMENT_LIMIT", "Не удалось проверить защитный слой: слишком много данных. Уменьшите область.")); }
             catch (ArgumentException ex) { result.Add(Error("ACTUAL_CONTAINMENT_INVALID", ex.Message)); }
-            catch (TopologyException) { result.Add(Error("ACTUAL_CONTAINMENT_INVALID", "Не удалось проверить геометрию фактических стержней относительно бетона.")); }
+            catch (TopologyException) { result.Add(Error("ACTUAL_CONTAINMENT_INVALID", "Стержни не проверены. Проверьте контур плиты и форму стержней.")); }
             return result;
         }
 
         private static List<V> SampleArc(V a, V m, V b, double barRadius, CancellationToken token,
             out double minZ, out double maxZ, out double error)
         {
-            if (!m.Valid) throw new ArgumentException("Дуга содержит недопустимые координаты.");
+            if (!m.Valid) throw new ArgumentException("Не удалось прочитать координаты загиба.");
             var u = m - a; var v = b - a; var n = V.Cross(u, v); var n2 = n.Squared;
-            if (u.Length <= Epsilon || n2 <= u.Squared * v.Squared * 1e-20) throw new ArgumentException("Три точки дуги вырождены.");
+            if (u.Length <= Epsilon || n2 <= u.Squared * v.Squared * 1e-20) throw new ArgumentException("По трём точкам загиба нельзя построить дугу. Проверьте форму стержня.");
             var center = a + (V.Cross(v, n) * u.Squared + V.Cross(n, u) * v.Squared) / (2 * n2);
             var radius = (a - center).Length;
-            if (!Finite(radius) || radius <= barRadius || radius > 1e9) throw new ArgumentException("Недопустимый радиус дуги.");
+            if (!Finite(radius) || radius <= barRadius || radius > 1e9) throw new ArgumentException("Не удалось определить радиус загиба. Проверьте форму стержня.");
             var x = (a - center) / radius; var y = V.Cross(n / Math.Sqrt(n2), x);
             double Angle(V p) { var d = p - center; return PositiveAngle(Math.Atan2(V.Dot(d, y), V.Dot(d, x))); }
             var endAngle = Angle(b); var midAngle = Angle(m);

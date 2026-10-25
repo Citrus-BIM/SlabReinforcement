@@ -10,15 +10,22 @@ public class NumericCoverageTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void NumericCoverageCannotAssignOneBarToNearlyTwoPitches(bool alongX)
+    public void NumericCoverageRequiresARealTwoRowZoneForNearlyTwoPitches(bool alongX)
     {
         var request = Request(1, 399, alongX);
         var manual = ReinforcementPlanner.Build(request);
-        Assert.True(manual.CanCreate); Assert.Single(manual.Bars);
+        Assert.False(manual.CanCreate);
+        Assert.Empty(manual.Bars);
+        Assert.Empty(manual.Groups);
+        Assert.Contains(manual.Diagnostics, d => d.Code == "SINGLE_ROW_ZONES_SKIPPED");
         request.Options.CoverageHalfSpacing = true;
+        // A half-pitch grid puts two adjacent real rows at 100 and 300 mm;
+        // the excluded manual singleton cannot supply their numerical coverage.
+        request.Options.GridOffsetMm = 100;
         var numeric = ReinforcementPlanner.Build(request);
         Assert.True(numeric.CanCreate, string.Join(";", numeric.Diagnostics.Select(d => d.Message)));
-        Assert.True(numeric.Bars.Count >= 2);
+        Assert.Equal(2, numeric.Bars.Count);
+        Assert.Equal(2, Assert.Single(numeric.Groups).Count);
         var patches = numeric.Bars.Select(b => Patch(b, 100, alongX)).Cast<Geometry>().ToList();
         var demand = Polygon(request.Faces[0].Vertices);
         Assert.True(demand.Difference(UnaryUnionOp.Union(patches)).Area < 1e-5);

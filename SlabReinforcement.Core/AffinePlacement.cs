@@ -49,7 +49,7 @@ namespace SlabReinforcement.Core
         private static void RequireFinite(Point3 point, string parameterName)
         {
             if (!Finite(point.X) || !Finite(point.Y) || !Finite(point.Z))
-                throw new ArgumentException("Coordinates and basis vectors must be finite.", parameterName);
+                throw new ArgumentException("Не удалось определить положение или направление объекта: неверные координаты.", parameterName);
         }
 
         private static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);

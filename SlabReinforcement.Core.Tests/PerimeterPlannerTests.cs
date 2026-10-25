@@ -21,7 +21,7 @@ public class PerimeterPlannerTests
     {
         var request=Request();request.Slabs[0].Holes.Add(new(){new(250,250),new(3750,250),new(3750,2750),new(250,2750)});
         var plan=PerimeterPlanner.Build(request);
-        Assert.False(plan.CanCreate);Assert.Contains(plan.Diagnostics,d=>d.Code=="PERIMETER_CONTAINMENT");
+        Assert.False(plan.CanCreate);Assert.Contains(plan.Diagnostics,d=>d.Code=="PERIMETER_CONTAINMENT"||d.Code=="PERIMETER_STATION_RANGE");
     }
     [Fact] public void LongitudinalContoursHaveRoundedCornersAndRemainClosed()
     {

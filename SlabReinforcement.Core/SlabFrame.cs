@@ -70,13 +70,13 @@ namespace SlabReinforcement.Core
             RequireFinite(value, parameterName);
             var scale = Math.Max(Math.Abs(value.X), Math.Max(Math.Abs(value.Y), Math.Abs(value.Z)));
             if (scale == 0)
-                throw new ArgumentException("A frame direction must be nonzero.", parameterName);
+                throw new ArgumentException("Направление плиты не определено. Проверьте выбранную поверхность и отрезок.", parameterName);
 
             // Scaling before computing the length avoids overflow when squaring large components.
             var scaled = new Point3(value.X / scale, value.Y / scale, value.Z / scale);
             var length = Math.Sqrt(Dot(scaled, scaled));
             if (scale <= minimumLength / length)
-                throw new ArgumentException("A frame direction is too small or nearly parallel to the normal.", parameterName);
+                throw new ArgumentException("Выберите более длинный отрезок вдоль поверхности плиты.", parameterName);
             return new Point3(scaled.X / length, scaled.Y / length, scaled.Z / length);
         }
 
@@ -89,7 +89,7 @@ namespace SlabReinforcement.Core
         private static void RequireFinite(Point3 point, string parameterName)
         {
             if (!Finite(point.X) || !Finite(point.Y) || !Finite(point.Z))
-                throw new ArgumentException("Coordinates and directions must be finite.", parameterName);
+                throw new ArgumentException("Не удалось определить положение или направление плиты: неверные координаты.", parameterName);
         }
 
         private static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);

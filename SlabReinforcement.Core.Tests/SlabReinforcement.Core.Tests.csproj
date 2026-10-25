@@ -17,6 +17,10 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
     <ProjectReference Include="..\SlabReinforcement.Core\SlabReinforcement.Core.csproj" />
     <ProjectReference Include="..\SlabReinforcement.Dxf\SlabReinforcement.Dxf.csproj" />
+    <Compile Include="..\SlabReinforcement\Integration\ReinforcementSession.cs" Link="Integration\ReinforcementSession.cs" />
+    <Compile Include="..\SlabReinforcement\Integration\CreationScopeGuard.cs" Link="Integration\CreationScopeGuard.cs" />
+    <Compile Include="..\SlabReinforcement\Preview\PreviewContracts.cs" Link="Integration\PreviewContracts.cs" />
+    <Compile Include="..\SlabReinforcement\Preview\PreviewProjection.cs" Link="Preview\PreviewProjection.cs" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
 </Project>

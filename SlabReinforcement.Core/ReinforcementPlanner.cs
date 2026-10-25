@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -32,13 +32,13 @@ namespace SlabReinforcement.Core
             {
                 result.Bars.Clear();
                 result.Groups.Clear();
-                Add(result, "PLAN_TOO_LARGE", "Слишком большой план армирования. Увеличьте шаг или уменьшите выбранную область.");
+                Add(result, "PLAN_TOO_LARGE", "Слишком много стержней. Увеличьте шаг или уменьшите выбранную область.");
             }
             catch (TopologyException)
             {
                 result.Bars.Clear();
                 result.Groups.Clear();
-                Add(result, "GEOMETRY_OPERATION_FAILED", "Не удалось выполнить геометрические операции. Проверьте контуры плиты и граней подложки.");
+                Add(result, "GEOMETRY_OPERATION_FAILED", "Зоны не рассчитаны. Проверьте контур плиты и выбранную подложку.");
             }
             return result;
         }
@@ -47,18 +47,22 @@ namespace SlabReinforcement.Core
         {
             if (request == null || request.Options == null || request.Slabs == null || request.Faces == null || request.Specifications == null)
             {
-                Add(result, "INVALID_REQUEST", "Не заданы исходные данные расчёта армирования.");
+                Add(result, "INVALID_REQUEST", "Недостаточно данных для расчёта. Проверьте выбор плиты, подложки и типов арматуры.");
                 return false;
             }
             var options = request.Options;
+            if(options.UsePerimeterUForZoneEnds && request.AutomaticZoneEnds==null && (request.PerimeterPlan==null||!request.PerimeterPlan.CanCreate))
+                Add(result,"ZONE_U_REQUIRES_PERIMETER","Не найдены подходящие П-окончания зон. Проверьте их настройки.");
+            if(options.UsePerimeterUForZoneEnds && options.CoverageHalfSpacing)
+                Add(result,"ZONE_U_REQUIRES_MANUAL","П-окончания зон доступны только в режиме ручной раскладки.");
             if (!GeometryKernel.Finite(options.GridOffsetMm) || !Nonnegative(options.EdgeCoverMm) || !Nonnegative(options.MergeToleranceMm)
                 || !Positive(options.RoundIncrementMm) || !Positive(options.MinimumLengthMm))
-                Add(result, "INVALID_OPTIONS", "Защитный слой и допуск объединения должны быть неотрицательными, округление и минимальная длина — положительными конечными числами.");
+                Add(result, "INVALID_OPTIONS", "Проверьте защитный слой, допуск объединения, округление и минимальную длину.");
             if (request.Slabs.Count == 0) Add(result, "NO_SLAB", "Не выбран контур плиты.");
-            if (request.Faces.Count == 0) Add(result, "NO_DEMAND", "Не выбраны цветные грани для армирования.");
+            if (request.Faces.Count == 0) Add(result, "NO_DEMAND", "Выберите цвета подложки, по которым нужно построить зоны.");
             if (request.Slabs.Count > GeometryKernel.MaximumPolygons || request.Faces.Count > GeometryKernel.MaximumFaces
                 || request.Specifications.Count > 1000)
-                Add(result, "PLAN_TOO_LARGE", "Слишком много исходных контуров, граней или настроек армирования.");
+                Add(result, "PLAN_TOO_LARGE", "Слишком много данных для расчёта зон. Уменьшите выбранную область.");
             long vertexCount = 0;
             foreach (var slab in request.Slabs)
             {
@@ -68,7 +72,7 @@ namespace SlabReinforcement.Core
             }
             foreach (var face in request.Faces) vertexCount += face?.Vertices?.Count ?? 0;
             if (vertexCount > GeometryKernel.MaximumVertices)
-                Add(result, "PLAN_TOO_LARGE", "Слишком много вершин в исходных контурах.");
+                Add(result, "PLAN_TOO_LARGE", "В контурах слишком много точек. Упростите контуры или уменьшите выбранную область.");
 
             var keys = new HashSet<string>(StringComparer.Ordinal);
             var colors = new HashSet<string>(StringComparer.Ordinal);
@@ -78,28 +82,30 @@ namespace SlabReinforcement.Core
                     || string.IsNullOrWhiteSpace(spec.MaterialKey) || !Positive(spec.DiameterMm) || !Positive(spec.SpacingMm)
                     || (spec.ModelDiameterMm.HasValue && !Positive(spec.ModelDiameterMm.Value))
                     || spec.SpacingMm < spec.EffectiveModelDiameterMm
+                    || (spec.RequiredAreaMm2PerM.HasValue && !Nonnegative(spec.RequiredAreaMm2PerM.Value))
                     || !Nonnegative(spec.AnchorageMm) || !GeometryKernel.Finite(spec.DiameterMm * spec.DiameterMm / spec.SpacingMm))
                 {
-                    Add(result, "INVALID_SPECIFICATION", "Для каждого цвета задайте уникальный ключ, материал, положительные диаметр и шаг, неотрицательную анкеровку. Шаг не может быть меньше физического диаметра стержня.", spec?.Key);
+                    Add(result, "INVALID_SPECIFICATION", "Проверьте тип, класс стали, анкеровку и шаг каждого цвета. Шаг должен быть не меньше диаметра.", spec?.Key);
                     continue;
                 }
                 if (!keys.Add(spec.Key) || !colors.Add(spec.ColorKey))
-                    Add(result, "INVALID_SPECIFICATION", "Ключи настроек и цвета не должны повторяться.", spec.Key);
+                    Add(result, "INVALID_SPECIFICATION", "Один цвет указан несколько раз. Оставьте одно назначение арматуры для каждого цвета.", spec.Key);
             }
             foreach (var face in request.Faces)
                 if (face != null && (string.IsNullOrWhiteSpace(face.ColorKey) || !colors.Contains(face.ColorKey)))
-                    Add(result, "UNMAPPED_COLOR", "Для цвета грани подложки не заданы параметры армирования.", face.Id);
+                    Add(result, "UNMAPPED_COLOR", "Для одного из цветов подложки не заданы тип арматуры и шаг.", face.Id);
             return !result.Diagnostics.Any(d => d.IsBlocking);
         }
 
         private static void BuildGeometry(PlanRequest request, ReinforcementPlan result, CancellationToken token)
         {
+            var uEnds=request.Options.UsePerimeterUForZoneEnds?new PerimeterZoneEnds(request,token):null;
             var slabs = new List<Geometry>();
             for (var i = 0; i < request.Slabs.Count; i++)
             {
                 token.ThrowIfCancellationRequested();
                 try { slabs.Add(GeometryKernel.ReadPolygon(request.Slabs[i])); }
-                catch (ArgumentException ex) { Add(result, "INVALID_SLAB", "Некорректный контур плиты: " + ex.Message, i.ToString(CultureInfo.InvariantCulture)); }
+                catch (ArgumentException ex) { Add(result, "INVALID_SLAB", "Проверьте контур плиты: " + ex.Message, i.ToString(CultureInfo.InvariantCulture)); }
             }
             var faces = new Dictionary<string, List<Geometry>>(StringComparer.Ordinal);
             foreach (var face in request.Faces.OrderBy(f => f?.ColorKey, StringComparer.Ordinal).ThenBy(f => f?.Id, StringComparer.Ordinal))
@@ -107,31 +113,30 @@ namespace SlabReinforcement.Core
                 token.ThrowIfCancellationRequested();
                 try
                 {
-                    if (face == null) throw new ArgumentException("Грань подложки не задана.");
+                    if (face == null) throw new ArgumentException("Не найден участок расчётной подложки. Выберите подложку заново.");
                     var polygon = GeometryKernel.Factory.CreatePolygon(GeometryKernel.ReadRing(face.Vertices));
                     if (!faces.TryGetValue(face.ColorKey, out var items)) faces[face.ColorKey] = items = new List<Geometry>();
                     items.Add(polygon);
                 }
-                catch (ArgumentException ex) { Add(result, "INVALID_FACE", "Некорректная грань подложки: " + ex.Message, face?.Id); }
+                catch (ArgumentException ex) { Add(result, "INVALID_FACE", "Проверьте участок подложки: " + ex.Message, face?.Id); }
             }
             if (result.Diagnostics.Any(d => d.IsBlocking)) return;
             var host = GeometryKernel.Union(slabs);
             token.ThrowIfCancellationRequested();
-            var demands = new List<SpecDemand>();
-            foreach (var spec in request.Specifications.OrderByDescending(s => s.DiameterMm * s.DiameterMm / s.SpacingMm)
-                .ThenBy(s => s.Key, StringComparer.Ordinal))
+            var demands = new List<LineDemand>();
+            foreach (var spec in request.Specifications.OrderByDescending(s => s.DiameterMm).ThenBy(s => s.SpacingMm)
+                .ThenBy(s => s.TypeKey ?? "", StringComparer.Ordinal).ThenBy(s => s.Key, StringComparer.Ordinal))
             {
                 token.ThrowIfCancellationRequested();
                 if (!faces.TryGetValue(spec.ColorKey, out var items)) continue;
                 var demand = GeometryKernel.AreaOnly(GeometryKernel.Intersect(GeometryKernel.Union(items), host));
                 if (demand.IsEmpty || !GeometryKernel.Polygons(demand).Any())
                 {
-                    Add(result, "DEMAND_OUTSIDE_SLAB", "Все выбранные грани этого цвета находятся вне контура плиты.", spec.Key);
+                    Add(result, "DEMAND_OUTSIDE_SLAB", "Все участки этого цвета находятся вне плиты. Проверьте подложку и выбранную плиту.", spec.Key);
                     continue;
                 }
-                demands.Add(new SpecDemand { Spec = spec, Region = demand });
+                demands.Add(new LineDemand { Spec = spec, Region = demand });
             }
-            demands = MergeEquivalentDemands(demands, token);
             result.DemandRegions = GeometryKernel.ToInputs(GeometryKernel.Union(demands.Select(d => d.Region)));
             for (var i = 0; i < demands.Count; i++)
             {
@@ -141,31 +146,29 @@ namespace SlabReinforcement.Core
                     if (demands[i].Spec.MaterialKey == demands[j].Spec.MaterialKey
                         || !demands[i].Region.EnvelopeInternal.Intersects(demands[j].Region.EnvelopeInternal)) continue;
                     if (GeometryKernel.Intersect(demands[i].Region, demands[j].Region).Area > Epsilon * Epsilon)
-                        Add(result, "INCOMPATIBLE_MATERIAL_OVERLAP", "В одной области пересекаются цвета с разными материалами арматуры. Устраните пересечение или назначьте одинаковый материал.", demands[i].Spec.Key + "/" + demands[j].Spec.Key);
+                        Add(result, "INCOMPATIBLE_MATERIAL_OVERLAP", "Перекрываются цвета с разными классами стали. Назначьте одинаковый класс.", demands[i].Spec.Key + "/" + demands[j].Spec.Key);
                 }
             }
             if (result.Diagnostics.Any(d => d.IsBlocking)) return;
 
-            // Higher As = pi*d^2/(4*s) wins; the common factor is omitted.
-            // Subtract the original stronger regions, not progressively altered faces.
-            var occupiedByMaterial = new Dictionary<string, Geometry>(StringComparer.Ordinal);
+            var lineAssignments = new ConnectedLineDemandNormalizer(demands, request.Options.AlongX);
+            demands = lineAssignments.Normalize(result, token);
+            if (result.Diagnostics.Any(d => d.IsBlocking)) return;
             var groups = new List<WorkingGroup>();
             var allowedBySpec = new Dictionary<string, Geometry>(StringComparer.Ordinal);
             var clearanceBySpec = new Dictionary<string, double>(StringComparer.Ordinal);
             var demandBySpec = new Dictionary<string, Geometry>(StringComparer.Ordinal);
+            var pathDemandBySpec = new Dictionary<string, Geometry>(StringComparer.Ordinal);
             foreach (var demand in demands)
             {
                 token.ThrowIfCancellationRequested();
                 var region = demand.Region;
-                if (occupiedByMaterial.TryGetValue(demand.Spec.MaterialKey, out var occupied))
-                    region = GeometryKernel.AreaOnly(GeometryKernel.Difference(region, occupied));
-                occupiedByMaterial[demand.Spec.MaterialKey] = occupied == null
-                    ? demand.Region : GeometryKernel.Union(new[] { occupied, demand.Region });
                 if (region.IsEmpty || !GeometryKernel.Polygons(region).Any()) continue;
+                pathDemandBySpec[demand.Spec.Key] = region;
                 var cover = request.Options.EdgeCoverMm + demand.Spec.EffectiveModelDiameterMm / 2;
                 if (!GeometryKernel.Finite(cover))
                 {
-                    Add(result, "INVALID_OPTIONS", "Защитный слой вместе с радиусом арматуры выходит за допустимый диапазон.", demand.Spec.Key);
+                    Add(result, "INVALID_OPTIONS", "Не удалось рассчитать отступ стержня от края. Проверьте диаметр и защитный слой.", demand.Spec.Key);
                     continue;
                 }
                 // Mitred corners conservatively preserve the full clearance around holes.
@@ -180,26 +183,47 @@ namespace SlabReinforcement.Core
                 {
                     token.ThrowIfCancellationRequested();
                     if (!GeometryKernel.Polygons(GeometryKernel.Intersect(component, allowed)).Any())
-                        Add(result, "DEMAND_OUTSIDE_COVER", "Для части выбранной области не остаётся места после учёта защитного слоя и диаметра стержня.", demand.Spec.Key);
+                        Add(result, "DEMAND_OUTSIDE_COVER", "Зона не помещается. Проверьте размер участка, диаметр и защитный слой.", demand.Spec.Key);
                 }
                 if (coveredDemand.IsEmpty) continue;
-                var runs = CreateRuns(coveredDemand, allowed, demand.Spec, request.Options, result, token);
-                groups.AddRange(CompleteGroups(runs, coveredDemand, allowed, demand.Spec, request.Options, result, token));
+                var runs = CreateRuns(coveredDemand, allowed, demand.Spec, request.Options, result, token,uEnds,lineAssignments);
+                groups.AddRange(CompleteGroups(runs, coveredDemand, allowed, demand.Spec, request.Options, result, token,uEnds,lineAssignments));
                 if (groups.Sum(g => (long)g.Rows.Count) > MaximumBars) throw new PlanSizeException();
             }
 
+            var sourceRows = new Dictionary<BarGroup, List<Run>>();
             foreach (var group in groups.OrderBy(g => g.Spec.Key, StringComparer.Ordinal)
                 .ThenBy(g => g.Rows[0].Row).ThenBy(g => g.Start).ThenBy(g => g.End))
-                for (var offset = 0; offset < group.Rows.Count; offset += MaximumArrayCount)
-                    result.Groups.Add(new BarGroup
+                for (var offset = 0; offset < group.Rows.Count;)
+                {
+                    var count = Math.Min(MaximumArrayCount, group.Rows.Count - offset);
+                    // Keep the final two rows together when splitting a real zone
+                    // at the API array limit; the limit must not discard its last row.
+                    if (group.Rows.Count - offset - count == 1) count--;
+                    var output = new BarGroup
                     {
-                        Start = Point(group.Start, group.Rows[0].Row + offset * group.Spec.SpacingMm, request.Options.AlongX),
-                        End = Point(group.End, group.Rows[0].Row + offset * group.Spec.SpacingMm, request.Options.AlongX),
-                        Count = Math.Min(MaximumArrayCount, group.Rows.Count - offset),
-                        SpacingMm = group.Spec.SpacingMm, SpecKey = group.Spec.Key, ColorKey = group.Spec.ColorKey
-                    });
+                        Start = Point(group.Start, group.Rows[offset].Row, request.Options.AlongX),
+                        End = Point(group.End, group.Rows[offset].Row, request.Options.AlongX),
+                        Count = count,
+                        SpacingMm = group.Spec.SpacingMm, SpecKey = group.Spec.Key, ColorKey = group.Spec.ColorKey,
+                        EndConnections=group.Rows[offset].EndConnections.ToList()
+                    };
+                    result.Groups.Add(output);
+                    sourceRows.Add(output, group.Rows.GetRange(offset, count));
+                    offset += count;
+                }
 
-            // This is the only source of bars: preview and Revit arrays share this result.
+            // Coverage and unification have finished. A one-row fragment is not a
+            // zone, but retain it for the pre-exclusion geometry coverage audit.
+            var completedGroups = result.Groups;
+            var singleRowCount = completedGroups.Count(g => g.Count < 2);
+            result.Groups = completedGroups.Where(g => g.Count >= 2).ToList();
+            if (singleRowCount > 0)
+                result.Diagnostics.Add(new PlanDiagnostic { Code = "SINGLE_ROW_ZONES_SKIPPED",
+                    Message = "Пропущено одиночных стержней: " + singleRowCount.ToString(CultureInfo.InvariantCulture)
+                        + ". Для зоны нужно минимум два." });
+
+            // This is the only source of bars: preview and native Revit zones share this result.
             var hostBoundary = host.Boundary;
             foreach (var group in result.Groups)
             {
@@ -218,6 +242,18 @@ namespace SlabReinforcement.Core
                     var row = request.Options.AlongX ? bar.Start.Y : bar.Start.X;
                     var start = request.Options.AlongX ? bar.Start.X : bar.Start.Y;
                     var end = request.Options.AlongX ? bar.End.X : bar.End.Y;
+                    foreach(var connection in sourceRows[group][i].EndConnections)
+                    {
+                        if(uEnds==null||!uEnds.TryConnect(start,end,row,demands.Single(d=>d.Spec.Key==group.SpecKey).Spec,
+                            connection.AtStart,out var checkedConnection,connection.EdgeId))
+                        {
+                            result.Bars.Clear();result.Groups.Clear();
+                            Add(result,"ZONE_U_CONNECTION_LOST",uEnds?.LastAutomaticFailure
+                                ??"Конец зоны вышел из П-стержня. Уменьшите допуск объединения зон.",group.SpecKey);
+                            return;
+                        }
+                        bar.EndConnections.Add(checkedConnection);
+                    }
                     // One final check per actual expanded bar also verifies the array
                     // arithmetic and the physical clearance, independent of grouping.
                     if (!SegmentCovered(allowedBySpec[group.SpecKey], start, end, row, request.Options.AlongX)
@@ -225,61 +261,45 @@ namespace SlabReinforcement.Core
                     {
                         result.Bars.Clear();
                         result.Groups.Clear();
-                        Add(result, "FINAL_CLEARANCE_FAILED", "Итоговый стержень не проходит проверку защитного слоя возле края или отверстия. Создание армирования остановлено.", group.SpecKey);
+                        Add(result, "FINAL_CLEARANCE_FAILED", "У края или отверстия нарушен защитный слой. Создание остановлено.", group.SpecKey);
                         return;
                     }
                     result.Bars.Add(bar);
                 }
             }
+            int connectedEnds=result.Bars.Sum(b=>b.EndConnections.Count);
+            if(connectedEnds>0)result.Diagnostics.Add(new PlanDiagnostic {Code="ZONE_ENDS_IN_PERIMETER_U",
+                Message="Концов с П-стержнями: "+connectedEnds+". Прочность соединений не проверена."});
+            if(groups.Any(g=>g.Rows.Any(r=>r.ExactEdgeLength)))result.Diagnostics.Add(new PlanDiagnostic {Code="ZONE_EDGE_EXACT_LENGTH",
+                Message="Длина зон у П-окончаний не округлена."});
             result.Bars = result.Bars.OrderBy(b => b.SpecKey, StringComparer.Ordinal)
                 .ThenBy(b => request.Options.AlongX ? b.Start.Y : b.Start.X)
                 .ThenBy(b => request.Options.AlongX ? b.Start.X : b.Start.Y).ToList();
-            VerifyBarCollisions(result, request.Specifications, request.Options.AlongX, token);
+            VerifyBarCollisions(result, request.Specifications, request.Options.AlongX, token,request.Options.AllowBarIntersections);
             foreach (var demand in demands)
             {
                 token.ThrowIfCancellationRequested();
                 if (!demandBySpec.TryGetValue(demand.Spec.Key, out var region) || region.IsEmpty) continue;
-                var remaining = DemandCoverage.Uncovered(region, result.Groups.Where(g => g.SpecKey == demand.Spec.Key).ToList(),
+                var remaining = DemandCoverage.Uncovered(region, completedGroups.Where(g => g.SpecKey == demand.Spec.Key).ToList(),
                     demand.Spec.SpacingMm, request.Options.AlongX, token, request.Options.CoverageHalfSpacing);
                 if (remaining.Area > Epsilon * Epsilon)
-                    Add(result, "UNCOVERED_DEMAND", "Не охвачены рядами стержней участки: " + GeometryKernel.Polygons(remaining).Count().ToString(CultureInfo.InvariantCulture)
-                        + "; площадь " + remaining.Area.ToString("G4", CultureInfo.CurrentCulture) + " мм². Проверьте шаг и форму выбранной области.", demand.Spec.Key);
+                    Add(result, "UNCOVERED_DEMAND", "Стержни не покрывают участки: " + GeometryKernel.Polygons(remaining).Count().ToString(CultureInfo.InvariantCulture)
+                        + "; общая площадь " + remaining.Area.ToString("G4", CultureInfo.CurrentCulture) + " мм². Проверьте шаг и границы выбранной области.", demand.Spec.Key);
             }
             if (result.Bars.Count == 0 && !result.Diagnostics.Any(d => d.IsBlocking))
-                Add(result, "NO_BARS", "По выбранным областям не удалось сформировать стержни. Проверьте размеры областей и настройки армирования.");
+                Add(result, "NO_BARS", singleRowCount > 0
+                    ? "Зоны не созданы: помещаются только одиночные стержни. Проверьте шаг и размеры участков."
+                    : "Зоны не размещены. Проверьте шаг, диаметр и размеры участков.");
+            lineAssignments.ValidateFinalNumericCoverage(result, token);
+            // Publish U bars only after final grouping, singleton exclusion and
+            // exact endpoint rechecks; trial rows must never leave orphan bars.
+            result.AutomaticZoneEndPlan=uEnds?.Complete(result.Bars);
+            if(result.AutomaticZoneEndPlan!=null)
+                result.Diagnostics.AddRange(result.AutomaticZoneEndPlan.Diagnostics);
+            ZonePathBandPlanner.Apply(result, request, host, pathDemandBySpec, token);
         }
 
-        private static List<SpecDemand> MergeEquivalentDemands(List<SpecDemand> demands, CancellationToken token)
-        {
-            // The caller ordered demands by descending As and ordinal key. Keep the first
-            // original spec as the representative, including its placement/color lookup key.
-            // Numeric equality alone cannot prove that distinct Revit types are interchangeable.
-            var equivalent = demands.GroupBy(d => new
-            {
-                TypeKey = string.IsNullOrWhiteSpace(d.Spec.TypeKey) ? null : d.Spec.TypeKey,
-                IndividualKey = string.IsNullOrWhiteSpace(d.Spec.TypeKey) ? d.Spec.Key : null,
-                d.Spec.MaterialKey,
-                d.Spec.DiameterMm,
-                ModelDiameterMm = d.Spec.EffectiveModelDiameterMm,
-                d.Spec.SpacingMm,
-                d.Spec.AnchorageMm
-            });
-            var result = new List<SpecDemand>();
-            foreach (var group in equivalent)
-            {
-                token.ThrowIfCancellationRequested();
-                var members = group.ToList();
-                result.Add(members.Count == 1 ? members[0] : new SpecDemand
-                {
-                    Spec = members[0].Spec,
-                    Region = GeometryKernel.AreaOnly(GeometryKernel.Union(members.Select(d => d.Region)))
-                });
-                token.ThrowIfCancellationRequested();
-            }
-            return result;
-        }
-
-        private static List<Run> CreateRuns(Geometry demand, Geometry allowed, ReinforcementSpec spec, PlanOptions options, ReinforcementPlan result, CancellationToken token)
+        private static List<Run> CreateRuns(Geometry demand, Geometry allowed, ReinforcementSpec spec, PlanOptions options, ReinforcementPlan result, CancellationToken token,PerimeterZoneEnds uEnds=null,ConnectedLineDemandNormalizer lineAssignments=null)
         {
             var rows = new SortedSet<double>();
             foreach (var polygon in GeometryKernel.Polygons(demand))
@@ -313,7 +333,7 @@ namespace SlabReinforcement.Core
                         var inside = polygon.InteriorPoint.Coordinate;
                         var row = options.AlongX ? inside.Y : inside.X;
                         if (Slice(polygon, row, options.AlongX).Any(v => v.End - v.Start >= options.MinimumLengthMm - Epsilon)) rows.Add(row);
-                        else Add(result, "DEMAND_TOO_SMALL", "Часть выбранной области меньше минимальной длины стержня.", spec.Key);
+                        else Add(result, "DEMAND_TOO_SMALL", "Участок слишком короткий для стержня. Проверьте границы зоны.", spec.Key);
                     }
                 }
                 if (rows.Count > MaximumRows) throw new PlanSizeException();
@@ -322,7 +342,7 @@ namespace SlabReinforcement.Core
             foreach (var row in rows)
             {
                 token.ThrowIfCancellationRequested();
-                runs.AddRange(CreateRowRuns(demand, allowed, row, spec, options, result));
+                runs.AddRange(CreateRowRuns(demand, allowed, row, spec, options, result,null,uEnds,lineAssignments));
                 if (runs.Count > MaximumBars) throw new PlanSizeException();
             }
             var uniqueRuns = new List<Run>();
@@ -337,11 +357,20 @@ namespace SlabReinforcement.Core
         }
 
         private static List<Run> CreateRowRuns(Geometry demand, Geometry allowed, double row,
-            ReinforcementSpec spec, PlanOptions options, ReinforcementPlan result, Geometry missing = null)
+            ReinforcementSpec spec, PlanOptions options, ReinforcementPlan result, Geometry missing = null,PerimeterZoneEnds uEnds=null,ConnectedLineDemandNormalizer lineAssignments=null)
         {
             var runs = new List<Run>();
             var hostIntervals = Slice(allowed, row, options.AlongX);
             var demandIntervals = Slice(demand, row, options.AlongX);
+            if (lineAssignments != null && lineAssignments.RequiresOwnership)
+            {
+                // At critical stations two open bands can meet only at their
+                // boundary. The winner owns the complete source-map interval,
+                // including the portion belonging to its neighbour's open band.
+                // The host interval below still enforces its own physical cover.
+                demandIntervals = lineAssignments.AtRow(row).Where(i => i.Spec.Key == spec.Key)
+                    .Select(i => new Interval(i.Start, i.End)).ToList();
+            }
             var missingIntervals = missing == null ? null : Slice(missing, row, options.AlongX);
             foreach (var host in hostIntervals)
             {
@@ -356,18 +385,27 @@ namespace SlabReinforcement.Core
                     if (missingIntervals != null && !missingIntervals.Any(m => Math.Min(end, m.End) - Math.Max(start, m.Start) > Epsilon)) continue;
                     var a = start - spec.AnchorageMm;
                     var b = end + spec.AnchorageMm;
+                    if(uEnds!=null){required.Add(new Interval(a,b));continue;}
                     if (a < host.Start - Epsilon || b > host.End + Epsilon)
                     {
-                        Add(result, "ANCHORAGE_DOES_NOT_FIT", "Недостаточно места для полной анкеровки возле края плиты или отверстия. Уменьшите область усиления либо измените параметры.", spec.Key);
+                        Add(result, "ANCHORAGE_DOES_NOT_FIT", "Прямой анкеровке не хватает места. Проверьте П-окончания зон.", spec.Key);
                         continue;
                     }
                     required.Add(new Interval(a, b));
                 }
                 foreach (var interval in MergeIntervals(required, options.MergeToleranceMm))
                 {
+                    if(uEnds!=null)
+                    {
+                        if(TryFitWithU(interval.Start,interval.End,host.Start,host.End,row,spec,options,uEnds,out var detailed))runs.Add(detailed);
+                        else if(uEnds.LastAutomaticFailure!=null)
+                            Add(result,"ZONE_U_DOES_NOT_FIT",uEnds.LastAutomaticFailure,spec.Key);
+                        else Add(result,"ANCHORAGE_DOES_NOT_FIT","Прямой анкеровке не хватает места. Проверьте П-окончания зон.",spec.Key);
+                        continue;
+                    }
                     if (!TryFit(interval.Start, interval.End, host.Start, host.End, options, out var start, out var end))
                     {
-                        Add(result, "ROUNDING_DOES_NOT_FIT", "Округлённая длина стержня не помещается между краем плиты и отверстием с сохранением требуемой анкеровки.", spec.Key);
+                        Add(result, "ROUNDING_DOES_NOT_FIT", "После округления стержень не помещается. Уменьшите округление.", spec.Key);
                         continue;
                     }
                     runs.Add(new Run { Row = row, Start = start, End = end, HostStart = host.Start, HostEnd = host.End });
@@ -377,7 +415,7 @@ namespace SlabReinforcement.Core
         }
 
         private static List<WorkingGroup> CompleteGroups(List<Run> runs, Geometry demand, Geometry allowed,
-            ReinforcementSpec spec, PlanOptions options, ReinforcementPlan result, CancellationToken token)
+            ReinforcementSpec spec, PlanOptions options, ReinforcementPlan result, CancellationToken token,PerimeterZoneEnds uEnds=null,ConnectedLineDemandNormalizer lineAssignments=null)
         {
             var groups = GroupRuns(runs, spec, options, token);
             if (result.Diagnostics.Any(d => d.IsBlocking && d.SourceId == spec.Key)) return groups;
@@ -401,7 +439,7 @@ namespace SlabReinforcement.Core
                 foreach (var missing in GeometryKernel.Polygons(uncovered).OrderBy(p => p.EnvelopeInternal.MinY).ThenBy(p => p.EnvelopeInternal.MinX))
                 {
                     token.ThrowIfCancellationRequested();
-                    if (TryExtendOneRow(missing, allowed, groups, index, spec, options, token, out var extendedRow))
+                    if (TryExtendOneRow(missing, allowed, groups, index, spec, options, token, out var extendedRow,uEnds,lineAssignments))
                     {
                         extendedRows.Add(extendedRow);
                         added = true;
@@ -413,17 +451,17 @@ namespace SlabReinforcement.Core
                         token.ThrowIfCancellationRequested();
                         if (!Slice(missing, row, options.AlongX).Any(i => i.End - i.Start >= options.MinimumLengthMm - Epsilon)) continue;
                         var candidateDiagnostics = new ReinforcementPlan();
-                        var candidates = CreateRowRuns(demand, allowed, row, spec, options, candidateDiagnostics, missing);
-                        if (candidateDiagnostics.Diagnostics.Count > 0)
+                        var candidates = CreateRowRuns(demand, allowed, row, spec, options, candidateDiagnostics, missing,uEnds,lineAssignments);
+                        if (candidateDiagnostics.Diagnostics.Any(d=>d.IsBlocking))
                         {
-                            failure = candidateDiagnostics.Diagnostics[0];
+                            failure = candidateDiagnostics.Diagnostics.First(d=>d.IsBlocking);
                             continue;
                         }
                         if (candidates.Count == 0) continue;
                         if (candidates.Any(candidate => Collides(candidate, index, spec.EffectiveModelDiameterMm)))
                         {
                             failure = new PlanDiagnostic { Code = "SUPPLEMENTAL_ROW_COLLISION", SourceId = spec.Key,
-                                Message = "Для узкого выступа не удалось разместить дополнительный стержень без пересечения с соседними стержнями.", IsBlocking = true };
+                                Message = "На узком выступе стержни пересекаются. Проверьте шаг и диаметр.", IsBlocking = true };
                             continue;
                         }
                         foreach (var candidate in candidates)
@@ -458,11 +496,44 @@ namespace SlabReinforcement.Core
                 }
             if (addedRows.Count > 0)
                 result.Diagnostics.Add(new PlanDiagnostic { Code = "SUPPLEMENTAL_ROWS_CREATED", SourceId = spec.Key,
-                    Message = "Для узких выступов добавлены отдельные ряды стержней: " + addedRows.Count.ToString(CultureInfo.InvariantCulture) + ".", IsBlocking = false });
+                    Message = "Добавочных рядов на узких выступах: " + addedRows.Count.ToString(CultureInfo.InvariantCulture) + ".", IsBlocking = false });
             if (extendedRows.Count > 0)
                 result.Diagnostics.Add(new PlanDiagnostic { Code = "ROWS_EXTENDED_FOR_COVERAGE", SourceId = spec.Key,
-                    Message = "Для узких выступов удлинены стержни в рядах: " + extendedRows.Count.ToString(CultureInfo.InvariantCulture) + ".", IsBlocking = false });
-            return groups;
+                    Message = "Удлинённых рядов на узких выступах: " + extendedRows.Count.ToString(CultureInfo.InvariantCulture) + ".", IsBlocking = false });
+            return MergeIdenticalGroups(groups, token);
+        }
+
+        private static List<WorkingGroup> MergeIdenticalGroups(List<WorkingGroup> groups, CancellationToken token)
+        {
+            var merged = new List<WorkingGroup>();
+            foreach(var group in groups)group.PinnedEnds=new EndConstraints(group.Rows);
+            // Coverage can split an array into fragments or extend adjacent rows to
+            // the same endpoints. Rejoin only exact final geometry: no new fitting,
+            // endpoint extension, row insertion or removal is allowed in this pass.
+            foreach (var sameEndpoints in groups.GroupBy(g => new { g.Start, g.End }))
+            {
+                WorkingGroup previous = null;
+                foreach (var group in sameEndpoints.OrderBy(g => g.Rows[0].Row))
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (previous != null
+                        && Math.Abs(group.Rows[0].Row - previous.Rows[previous.Rows.Count - 1].Row - group.Spec.SpacingMm) <= Epsilon
+                        && previous.PinnedEnds.CompatibleWith(group.PinnedEnds))
+                    {
+                        previous.Rows.AddRange(group.Rows);
+                        previous.PinnedEnds.Include(group.PinnedEnds);
+                        previous.HostStart = Math.Max(previous.HostStart, group.HostStart);
+                        previous.HostEnd = Math.Min(previous.HostEnd, group.HostEnd);
+                        previous.ModifiedForCoverage |= group.ModifiedForCoverage;
+                    }
+                    else
+                    {
+                        merged.Add(group);
+                        previous = group;
+                    }
+                }
+            }
+            return merged;
         }
 
         private static void IndexGroup(WorkingGroup group, Quadtree<Run> index)
@@ -470,14 +541,16 @@ namespace SlabReinforcement.Core
             foreach (var member in group.Rows)
             {
                 var actual = new Run { Row = member.Row, Start = group.Start, End = group.End,
-                    HostStart = member.HostStart, HostEnd = member.HostEnd, Group = group };
+                    HostStart = member.HostStart, HostEnd = member.HostEnd, Group = group,
+                    RequiredStart=member.RequiredStart,RequiredEnd=member.RequiredEnd,
+                    EndConnections=member.EndConnections.ToList(),ExactEdgeLength=member.ExactEdgeLength };
                 group.IndexedRows.Add(actual);
                 index.Insert(RunEnvelope(actual), actual);
             }
         }
 
         private static bool TryExtendOneRow(Polygon missing, Geometry allowed, List<WorkingGroup> groups,
-            Quadtree<Run> index, ReinforcementSpec spec, PlanOptions options, CancellationToken token, out double extendedRow)
+            Quadtree<Run> index, ReinforcementSpec spec, PlanOptions options, CancellationToken token, out double extendedRow,PerimeterZoneEnds uEnds=null,ConnectedLineDemandNormalizer lineAssignments=null)
         {
             extendedRow = 0;
             var envelope = missing.EnvelopeInternal;
@@ -497,17 +570,29 @@ namespace SlabReinforcement.Core
                 .ThenBy(r => r.Row).ThenBy(r => r.Start).Take(128))
             {
                 token.ThrowIfCancellationRequested();
+                if (lineAssignments != null && lineAssignments.HasOtherOwner(existing.Row, left, right, spec.Key)) continue;
                 var requiredStart = Math.Min(existing.Start, left - spec.AnchorageMm);
                 var requiredEnd = Math.Max(existing.End, right + spec.AnchorageMm);
-                if (!TryFit(requiredStart, requiredEnd, existing.HostStart, existing.HostEnd, options, out var start, out var end)) continue;
+                Run replacement;
+                double start,end;
+                if(uEnds!=null)
+                {
+                    requiredStart=Math.Min(requiredStart,existing.RequiredStart);
+                    requiredEnd=Math.Max(requiredEnd,existing.RequiredEnd);
+                    if(!TryFitWithU(requiredStart,requiredEnd,existing.HostStart,existing.HostEnd,existing.Row,spec,options,uEnds,out replacement))continue;
+                    start=replacement.Start;end=replacement.End;
+                }
+                else
+                {
+                    if(!TryFit(requiredStart, requiredEnd, existing.HostStart, existing.HostEnd, options, out start, out end))continue;
+                    replacement=new Run {Row=existing.Row,Start=start,End=end,HostStart=existing.HostStart,HostEnd=existing.HostEnd};
+                }
                 if (Math.Abs(start - existing.Start) <= Epsilon && Math.Abs(end - existing.End) <= Epsilon) continue;
-                var replacement = new Run { Row = existing.Row, Start = start, End = end,
-                    HostStart = existing.HostStart, HostEnd = existing.HostEnd };
                 if (Collides(replacement, index, spec.EffectiveModelDiameterMm, existing)) continue;
 
                 var original = existing.Group;
                 var position = original.IndexedRows.IndexOf(existing);
-                if (position < 0) throw new InvalidOperationException("Не найден исходный ряд массива.");
+                if (position < 0) throw new InvalidOperationException("Не удалось найти исходный ряд зоны. Повторите расчёт.");
                 groups.Remove(original);
                 AddFragment(0, position);
                 AddFragment(position + 1, original.Rows.Count - position - 1);
@@ -535,9 +620,19 @@ namespace SlabReinforcement.Core
         }
 
         private static void VerifyBarCollisions(ReinforcementPlan plan, List<ReinforcementSpec> specifications,
-            bool alongX, CancellationToken token)
+            bool alongX, CancellationToken token,bool allowBarIntersections)
         {
             if (plan.Bars.Count < 2) return;
+            if (allowBarIntersections)
+            {
+                var specs = specifications.ToDictionary(s => s.Key);
+                plan.Diagnostics.AddRange(CompositePlanValidator.ValidateDuplicates(plan.Bars.Select(bar => new PlannedBar {
+                    Start = bar.Start, End = bar.End,
+                    Placement = new BarPlacement { ModelDiameterMm = specs[bar.SpecKey].EffectiveModelDiameterMm,
+                        ElevationMm = specs[bar.SpecKey].ElevationMm ?? 0 }
+                }), 0, token));
+                return;
+            }
             var radii = specifications.ToDictionary(s => s.Key, s => s.EffectiveModelDiameterMm / 2);
             var maximumRadius = radii.Values.Max();
             var index = new STRtree<PhysicalBar>();
@@ -572,8 +667,9 @@ namespace SlabReinforcement.Core
                 }
             }
             if (collisions > 0)
-                Add(plan, "FINAL_BAR_COLLISION", "Пересекающиеся пары стержней в итоговом плане: " + collisions.ToString(CultureInfo.InvariantCulture)
-                    + ". Проверьте шаг, анкеровку и назначения соседних цветовых областей.");
+                plan.Diagnostics.Add(new PlanDiagnostic {Code="FINAL_BAR_COLLISION",IsBlocking=!allowBarIntersections,
+                    Message="Пересекающиеся пары стержней: " + collisions.ToString(CultureInfo.InvariantCulture)
+                    + (allowBarIntersections?". Создание разрешено. Проверьте пересечения.":". Проверьте шаг и анкеровку соседних зон.")});
         }
 
         private static List<BarGroup> CoverageGroups(IEnumerable<WorkingGroup> groups, bool alongX) => groups.Select(g => new BarGroup
@@ -633,6 +729,7 @@ namespace SlabReinforcement.Core
                 var unused = new HashSet<WorkingGroup>(active);
                 foreach (var run in row)
                 {
+                    var runEnds=new EndConstraints(new[]{run});
                     WorkingGroup match = null;
                     var newStart = run.Start;
                     var newEnd = run.End;
@@ -640,11 +737,25 @@ namespace SlabReinforcement.Core
                     {
                         if (!unused.Contains(candidate) || Math.Abs(run.Row - candidate.Rows[candidate.Rows.Count - 1].Row - spec.SpacingMm) > Epsilon)
                             continue;
-                        if (Math.Abs(candidate.Start - run.Start) > options.MergeToleranceMm + Epsilon
-                            || Math.Abs(candidate.End - run.End) > options.MergeToleranceMm + Epsilon) continue;
+                        // A cluster's first original row is the fixed tolerance
+                        // reference, as in the legacy X/Y line clustering. Expanded
+                        // endpoints must not let a widening cluster grow indefinitely.
+                        var first = candidate.Rows[0];
+                        if (Math.Abs(first.Start - run.Start) > options.MergeToleranceMm + Epsilon
+                            || Math.Abs(first.End - run.End) > options.MergeToleranceMm + Epsilon) continue;
+                        if(!candidate.PinnedEnds.CompatibleWith(runEnds))continue;
                         var hostStart = Math.Max(candidate.HostStart, run.HostStart);
                         var hostEnd = Math.Min(candidate.HostEnd, run.HostEnd);
-                        if (!TryFit(Math.Min(candidate.Start, run.Start), Math.Max(candidate.End, run.End), hostStart, hostEnd, options, out newStart, out newEnd)) continue;
+                        var originalStart = Math.Min(candidate.OriginalStart, run.Start);
+                        var originalEnd = Math.Max(candidate.OriginalEnd, run.End);
+                        // Fit the original run envelope once, rather than repeatedly
+                        // rounding an already expanded group. All original fitted
+                        // endpoints, including their required anchorage, remain inside.
+                        if(!TryFitPinned(originalStart,originalEnd,hostStart,hostEnd,options,
+                            candidate.PinnedEnds.Start??runEnds.Start,candidate.PinnedEnds.End??runEnds.End,out newStart,out newEnd))continue;
+                        // U ends remain pinned to the same edge at the same axis
+                        // coordinate. Extending the free end cannot reduce the checked
+                        // overlap; final regeneration rechecks every actual row.
                         // HostStart/End are the intersection of the connected host
                         // intervals of EVERY prior row. Fitting inside that intersection
                         // proves coverage of every expanded segment in O(1), including
@@ -654,24 +765,55 @@ namespace SlabReinforcement.Core
                     }
                     if (match == null)
                     {
-                        match = new WorkingGroup { Spec = spec, Start = run.Start, End = run.End, HostStart = run.HostStart, HostEnd = run.HostEnd };
+                        match = new WorkingGroup { Spec = spec, Start = run.Start, End = run.End,
+                            OriginalStart = run.Start, OriginalEnd = run.End, HostStart = run.HostStart, HostEnd = run.HostEnd,
+                            PinnedEnds=runEnds };
                     }
                     else
                     {
                         unused.Remove(match);
                         match.Start = newStart;
                         match.End = newEnd;
+                        match.OriginalStart = Math.Min(match.OriginalStart, run.Start);
+                        match.OriginalEnd = Math.Max(match.OriginalEnd, run.End);
                         match.HostStart = Math.Max(match.HostStart, run.HostStart);
                         match.HostEnd = Math.Min(match.HostEnd, run.HostEnd);
+                        match.PinnedEnds.Include(runEnds);
+                        if(RoundLength(newEnd-newStart,options)>newEnd-newStart+Epsilon)run.ExactEdgeLength=true;
                     }
                     match.Rows.Add(run);
                     next.Add(match);
                 }
-                finished.AddRange(unused);
+                // An intervening off-grid row does not end an array whose next
+                // regular station has not arrived. Keep it active for at most
+                // one spacing; an absent or incompatible expected row ends it.
+                foreach(var pending in unused)
+                    if(pending.Rows[pending.Rows.Count-1].Row+spec.SpacingMm>row.Key+Epsilon)next.Add(pending);
+                    else finished.Add(pending);
                 active = next;
             }
             finished.AddRange(active);
             return finished;
+        }
+
+        private static bool TryFitPinned(double requiredStart,double requiredEnd,double hostStart,double hostEnd,PlanOptions options,
+            double? pinnedStart,double? pinnedEnd,out double start,out double end)
+        {
+            if(!pinnedStart.HasValue&&!pinnedEnd.HasValue)
+                return TryFit(requiredStart,requiredEnd,hostStart,hostEnd,options,out start,out end);
+            double length=RoundLength(requiredEnd-requiredStart,options);
+            start=pinnedStart??(pinnedEnd.Value-length);
+            end=pinnedEnd??(start+length);
+            if(Valid(start,end))return true;
+            // Rounding may exceed the common host interval. Exact geometry is
+            // allowed only while preserving every original end and every pin.
+            start=requiredStart;end=requiredEnd;
+            return Valid(start,end);
+
+            bool Valid(double a,double b)=>GeometryKernel.Finite(a)&&GeometryKernel.Finite(b)
+                &&a>=hostStart-Epsilon&&b<=hostEnd+Epsilon&&a<=requiredStart+Epsilon&&b>=requiredEnd-Epsilon
+                &&(!pinnedStart.HasValue||Math.Abs(a-pinnedStart.Value)<=Epsilon)
+                &&(!pinnedEnd.HasValue||Math.Abs(b-pinnedEnd.Value)<=Epsilon);
         }
 
         private static bool TryFit(double requiredStart, double requiredEnd, double hostStart, double hostEnd, PlanOptions options, out double start, out double end)
@@ -686,6 +828,46 @@ namespace SlabReinforcement.Core
             if (minimumStart > maximumStart + Epsilon) return false;
             start = Math.Max(minimumStart, Math.Min(maximumStart, (requiredStart + requiredEnd - length) / 2));
             end = start + length;
+            return true;
+        }
+
+        private static bool TryFitWithU(double requiredStart,double requiredEnd,double hostStart,double hostEnd,double row,
+            ReinforcementSpec spec,PlanOptions options,PerimeterZoneEnds uEnds,out Run run)
+        {
+            uEnds.ResetFailure();
+            run=null;bool left=requiredStart<hostStart-Epsilon,right=requiredEnd>hostEnd+Epsilon;
+            double a=left?hostStart:requiredStart,b=right?hostEnd:requiredEnd;
+            double requiredSpan=uEnds.GetRequiredEndSpan(spec);
+            if(requiredSpan>0&&(left||right))
+            {
+                if(hostEnd-hostStart<requiredSpan-Epsilon)
+                {
+                    uEnds.ReportInsufficientSpan(left?a:b,row,hostEnd-hostStart,requiredSpan);
+                    return false;
+                }
+                // Preserve every originally required endpoint and any pinned
+                // boundary; extend only a free end to receive the entire U leg.
+                if(left&&!right)b=Math.Max(b,a+requiredSpan);
+                if(right&&!left)a=Math.Min(a,b-requiredSpan);
+            }
+            if(b-a<options.MinimumLengthMm-Epsilon)return false;
+            var connections=new List<PerimeterZoneEndConnection>();
+            if(left){if(!uEnds.TryConnect(a,b,row,spec,true,out var connection))return false;connections.Add(connection);}
+            if(right){if(!uEnds.TryConnect(a,b,row,spec,false,out var connection))return false;connections.Add(connection);}
+            bool exact=false;
+            if(!TryFit(a,b,hostStart,hostEnd,options,out var start,out var end))
+            {
+                if(connections.Count==0)return false;
+                start=a;end=b;exact=true;
+            }
+            var checkedConnections=new List<PerimeterZoneEndConnection>();
+            foreach(var connection in connections)
+            {
+                if(!uEnds.TryConnect(start,end,row,spec,connection.AtStart,out var current,connection.EdgeId))return false;
+                checkedConnections.Add(current);
+            }
+            run=new Run {Row=row,Start=start,End=end,HostStart=hostStart,HostEnd=hostEnd,RequiredStart=requiredStart,RequiredEnd=requiredEnd,
+                EndConnections=checkedConnections,ExactEdgeLength=exact};
             return true;
         }
 
@@ -759,7 +941,6 @@ namespace SlabReinforcement.Core
                 result.Diagnostics.Add(new PlanDiagnostic { Code = code, Message = message, SourceId = sourceId, IsBlocking = true });
         }
         private sealed class PlanSizeException : Exception { }
-        private sealed class SpecDemand { public ReinforcementSpec Spec; public Geometry Region; }
         private sealed class SupplementFailure { public Geometry Region; public PlanDiagnostic Diagnostic; }
         private sealed class PhysicalBar { public int Ordinal; public Run Segment; public double Radius; }
         private sealed class Interval
@@ -776,6 +957,10 @@ namespace SlabReinforcement.Core
             public double End;
             public double HostStart;
             public double HostEnd;
+            public double RequiredStart;
+            public double RequiredEnd;
+            public bool ExactEdgeLength;
+            public List<PerimeterZoneEndConnection> EndConnections=new List<PerimeterZoneEndConnection>();
         }
         private sealed class WorkingGroup
         {
@@ -783,10 +968,42 @@ namespace SlabReinforcement.Core
             public ReinforcementSpec Spec;
             public double Start;
             public double End;
+            public double OriginalStart;
+            public double OriginalEnd;
             public double HostStart;
             public double HostEnd;
+            public EndConstraints PinnedEnds;
             public List<Run> Rows = new List<Run>();
             public List<Run> IndexedRows = new List<Run>();
+        }
+        // Cache all pins, including a pin introduced after a free first row.
+        // This keeps each append O(1) without weakening per-row final checks.
+        private sealed class EndConstraints
+        {
+            public double? Start,End;
+            private string startEdge,endEdge;
+            private bool conflict;
+            public EndConstraints(IEnumerable<Run> rows)
+            {
+                foreach(var row in rows)
+                    foreach(var connection in row.EndConnections)
+                    {
+                        var next=new EndConstraints();
+                        if(connection.AtStart){next.Start=row.Start;next.startEdge=connection.EdgeId;}
+                        else {next.End=row.End;next.endEdge=connection.EdgeId;}
+                        if(!CompatibleWith(next))conflict=true;
+                        Include(next);
+                    }
+            }
+            private EndConstraints(){}
+            public bool CompatibleWith(EndConstraints other)=>!conflict&&!other.conflict
+                &&(!Start.HasValue||!other.Start.HasValue||Math.Abs(Start.Value-other.Start.Value)<=Epsilon&&startEdge==other.startEdge)
+                &&(!End.HasValue||!other.End.HasValue||Math.Abs(End.Value-other.End.Value)<=Epsilon&&endEdge==other.endEdge);
+            public void Include(EndConstraints other)
+            {
+                if(!Start.HasValue){Start=other.Start;startEdge=other.startEdge;}
+                if(!End.HasValue){End=other.End;endEdge=other.endEdge;}
+            }
         }
     }
 }

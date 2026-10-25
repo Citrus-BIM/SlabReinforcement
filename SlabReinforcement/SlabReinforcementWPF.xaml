@@ -11,6 +11,14 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="CitrusTheme/CitrusTheme.xaml" />
             </ResourceDictionary.MergedDictionaries>
+            <Style TargetType="ToolTip" BasedOn="{StaticResource {x:Type ToolTip}}">
+                <Setter Property="MaxWidth" Value="400" />
+                <Setter Property="ContentTemplate">
+                    <Setter.Value>
+                        <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" /></DataTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
             <Style x:Key="SectionLabel" TargetType="TextBlock">
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="FontSize" Value="14" />
@@ -94,21 +102,27 @@
                 <ColumnDefinition Width="*" MinWidth="390" />
             </Grid.ColumnDefinitions>
             <Border Background="{StaticResource CardBgBrush}" BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="8">
-                <TabControl x:Name="ComponentsTabs" Margin="6" BorderThickness="0">
+                <TabControl x:Name="ComponentsTabs" Margin="6" BorderThickness="0" SelectionChanged="ComponentsTabs_SelectionChanged">
                     <TabItem x:Name="BackgroundTab" Header="Фон и обрамление" Style="{StaticResource ComponentTab}">
                         <ScrollViewer x:Name="BackgroundScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="6,10,6,4">
                             <StackPanel>
                                 <TextBlock Text="Фон" Style="{StaticResource SectionLabel}" Margin="0,0,0,8" />
-                                <DataGrid x:Name="BackgroundDataGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False" CanUserReorderColumns="False" HeadersVisibility="Column" RowHeaderWidth="0" SelectionMode="Single" SelectionUnit="FullRow">
+                                <DataGrid x:Name="BackgroundDataGrid" AutoGenerateColumns="False" CanUserAddRows="False" CanUserDeleteRows="False" CanUserSortColumns="False" CanUserReorderColumns="False" CanUserResizeColumns="False" ScrollViewer.HorizontalScrollBarVisibility="Disabled" HeadersVisibility="Column" RowHeaderWidth="0" SelectionMode="Single" SelectionUnit="FullRow">
                                     <DataGrid.Columns>
                                         <DataGridTemplateColumn Header="✓" Width="28"><DataGridTemplateColumn.CellTemplate><DataTemplate><CheckBox IsChecked="{Binding Enabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip="Включить слой фона" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-                                        <DataGridTextColumn Header="Слой" Binding="{Binding Direction}" IsReadOnly="True" Width="64" />
+                                        <DataGridTextColumn Header="Слой" Binding="{Binding Direction}" IsReadOnly="True" Width="64">
+                                            <DataGridTextColumn.ElementStyle>
+                                                <Style TargetType="{x:Type TextBlock}" BasedOn="{x:Static DataGridTextColumn.DefaultElementStyle}">
+                                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                                </Style>
+                                            </DataGridTextColumn.ElementStyle>
+                                        </DataGridTextColumn>
                                         <DataGridTemplateColumn Header="Тип арматуры" Width="*" MinWidth="120"><DataGridTemplateColumn.CellTemplate><DataTemplate><ComboBox ItemsSource="{Binding RebarTypes}" SelectedItem="{Binding SelectedRebarType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" DisplayMemberPath="Name" Margin="2" MinHeight="31" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-                                        <DataGridTemplateColumn Header="Шаг, мм" Width="76"><DataGridTemplateColumn.CellTemplate><DataTemplate><TextBox Text="{Binding SpacingText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormNumber}" Margin="2" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="Макс. шаг, мм" Width="94"><DataGridTemplateColumn.CellTemplate><DataTemplate><TextBox Text="{Binding SpacingText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormNumber}" Margin="2" ToolTip="Максимальное расстояние между стержнями. Крайние ряды — по защитному слою." /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
-                                <CheckBox x:Name="CheckBox_PerimeterEnabled" Content="П-образное обрамление" FontWeight="SemiBold" Margin="0,18,0,10" Checked="Parameter_Checked" Unchecked="Parameter_Checked" />
-                                <StackPanel IsEnabled="{Binding IsChecked, ElementName=CheckBox_PerimeterEnabled}">
+                                <CheckBox x:Name="CheckBox_PerimeterEnabled" Content="Создать П-обрамление" FontWeight="SemiBold" Margin="0,18,0,10" Checked="Parameter_Checked" Unchecked="Parameter_Checked" />
+                                <StackPanel>
                                     <Grid Margin="0,0,0,10">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                         <CheckBox x:Name="CheckBox_PerimeterOuter" Content="Наружный контур" Checked="Parameter_Checked" Unchecked="Parameter_Checked" />
@@ -116,28 +130,32 @@
                                     </Grid>
                                     <TextBlock Text="Тип арматуры" Style="{StaticResource FormLabel}" />
                                     <ComboBox x:Name="ComboBox_PerimeterType" DisplayMemberPath="Name" MinHeight="32" Margin="0,0,0,10" SelectionChanged="Parameter_SelectionChanged" />
-                                    <Grid>
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                        <StackPanel><TextBlock Text="Шаг П-стержней, мм" Style="{StaticResource FormLabel}" /><TextBox x:Name="TextBox_PerimeterSpacing" Style="{StaticResource FormNumber}" TextChanged="Parameter_TextChanged" /></StackPanel>
-                                        <StackPanel Grid.Column="2"><TextBlock Text="Длина лапки, мм" Style="{StaticResource FormLabel}" /><TextBox x:Name="TextBox_PerimeterLeg" Style="{StaticResource FormNumber}" TextChanged="Parameter_TextChanged" /></StackPanel>
-                                    </Grid>
+                                    <TextBlock x:Name="TextBlock_PerimeterLengthPolicy" Text="Длина П — автоматически, для 100% растянутых стыков в одном сечении." ToolTip="По бетону, классу и диаметру арматуры." TextWrapping="Wrap" Foreground="{StaticResource SubtleTextBrush}" Margin="0,0,0,12" />
+                                    <TextBlock Text="Шаг П, мм" Style="{StaticResource FormLabel}" />
+                                    <TextBox x:Name="TextBox_PerimeterSpacing" Style="{StaticResource FormNumber}" TextChanged="Parameter_TextChanged"
+                                             ToolTip="П — по рядам нижнего фона. Без фона — с указанным шагом." />
+                                    <TextBlock x:Name="TextBlock_PerimeterDistribution" Text="Шаг задан вручную" Margin="0,6,0,0" TextWrapping="Wrap" Foreground="{StaticResource SubtleTextBrush}" />
                                 </StackPanel>
                             </StackPanel>
                         </ScrollViewer>
                     </TabItem>
                     <TabItem x:Name="ZonesTab" Header="Зоны" Style="{StaticResource ComponentTab}">
-                <Grid Margin="6,8,6,4">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
+                <ScrollViewer x:Name="ZonesScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Margin="6,8,12,4">
                     <StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Button x:Name="Button_SelectUnderlay" Content="Выбрать подложку" Style="{StaticResource ButtonOutline}"
+                                    Click="Button_SelectUnderlay_Click" ToolTip="Выбрать DWG/DXF в модели Revit" />
+                            <TextBlock x:Name="UnderlayName" Grid.Column="1" Text="Не выбрана" Margin="10,0,0,0"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Foreground="{StaticResource SubtleTextBrush}"
+                                       ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                        </Grid>
                         <StackPanel x:Name="SourceGroupPanel" Margin="0,0,0,8" Visibility="Collapsed">
                             <Grid>
                             <ComboBox x:Name="ComboBox_SourceGroup" MinHeight="34" DisplayMemberPath="DisplayName" SelectedValuePath="Group.Key"
                                       SelectionChanged="SourceGroup_SelectionChanged"
-                                      ToolTip="В расчёт попадают только выбранный слой CAD и одна плоскость. Другие слои и отметки не объединяются." />
-                            <TextBlock x:Name="SourceGroupPlaceholder" Text="Выберите слой и плоскость" Margin="12,0,32,0"
+                                      ToolTip="Используются зоны выбранного слоя на указанной высоте." />
+                            <TextBlock x:Name="SourceGroupPlaceholder" Text="Выберите слой и высоту" Margin="12,0,32,0"
                                        VerticalAlignment="Center" Foreground="{StaticResource SubtleTextBrush}"
                                        IsHitTestVisible="False" TextTrimming="CharacterEllipsis">
                                 <TextBlock.Style>
@@ -153,21 +171,16 @@
                             </TextBlock>
                             </Grid>
                         </StackPanel>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <CheckBox x:Name="CheckBox_IncludeZones" Content="Включить зоны" Checked="Parameter_Checked" Unchecked="Parameter_Checked" />
-                            <CheckBox x:Name="CheckBox_CalculationAxesConfirmed" Grid.Column="1" Content="Оси подтверждены" Checked="Parameter_Checked" Unchecked="Parameter_Checked" IsEnabled="{Binding IsChecked, ElementName=CheckBox_IncludeZones}" ToolTip="Расчётные оси и выбранное направление армирования соответствуют осям подложки. Поворот геометрии сам по себе не преобразует значения армирования по X и Y." />
-                        </Grid>
-                        <ComboBox x:Name="ComboBox_DemandMeaning" DisplayMemberPath="DisplayName" SelectedValuePath="Key" MinHeight="30" Margin="0,0,0,8" SelectionChanged="DemandMeaning_SelectionChanged" IsEnabled="{Binding IsChecked, ElementName=CheckBox_IncludeZones}" ToolTip="Для полной площади учитывается только фон того же направления и материала, создаваемый в этой операции." />
+                        <ComboBox x:Name="ComboBox_DemandMeaning" DisplayMemberPath="DisplayName" SelectedValuePath="Key" MinHeight="30" Margin="0,0,0,8" SelectionChanged="DemandMeaning_SelectionChanged" ToolTip="Ручное назначение — без проверки площади. Дополнительная площадь — только зоны. Полная — с учётом проверенного существующего фона." />
                     </StackPanel>
-                    <DataGrid Grid.Row="1" x:Name="ColorStatsDataGrid" AutoGenerateColumns="False" CanUserAddRows="False"
-                              CanUserDeleteRows="False" CanUserSortColumns="False" CanUserReorderColumns="False"
+                    <DataGrid x:Name="ColorStatsDataGrid" Height="260" AutoGenerateColumns="False" CanUserAddRows="False"
+                              CanUserDeleteRows="False" CanUserSortColumns="False" CanUserReorderColumns="False" CanUserResizeColumns="False" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                               HeadersVisibility="Column" RowHeaderWidth="0" SelectionMode="Single" SelectionUnit="FullRow"
-                              EnableRowVirtualization="True" EnableColumnVirtualization="True" MinHeight="104" IsEnabled="{Binding IsChecked, ElementName=CheckBox_IncludeZones}">
+                              EnableRowVirtualization="True" EnableColumnVirtualization="True" MinHeight="104">
                         <DataGrid.Columns>
                             <DataGridTemplateColumn Header="✓" Width="28">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate><CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip="Включить цвет в расчёт" /></DataTemplate>
+                                    <DataTemplate><CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" HorizontalAlignment="Center" VerticalAlignment="Center" ToolTip="Создать зоны этого цвета" /></DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
                             <DataGridTemplateColumn Header="Цвет" Width="40">
@@ -179,21 +192,45 @@
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <ComboBox ItemsSource="{Binding RebarTypes}" SelectedItem="{Binding SelectedRebarType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  DisplayMemberPath="Name" Margin="2" MinHeight="31" ToolTip="Выберите тип из текущего проекта" />
+                                                  DisplayMemberPath="Name" Margin="2" MinHeight="31" ToolTip="Вдоль одной линии — наибольший диаметр и его шаг. При равных диаметрах — меньший шаг." />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
                             <DataGridTemplateColumn Header="Шаг, мм" Width="72">
                                 <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate><TextBox Text="{Binding SpacingText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormNumber}" Margin="2" ToolTip="Положительный шаг в миллиметрах" /></DataTemplate>
+                                    <DataTemplate><TextBox Text="{Binding SpacingText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormNumber}" Margin="2" ToolTip="Вдоль одной линии — шаг наибольшего диаметра. При равных диаметрах — меньший шаг." /></DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
                             <DataGridTemplateColumn x:Name="RequiredAreaColumn" Header="мм²/м" Width="86" Visibility="Collapsed">
-                                <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBox Text="{Binding RequiredAreaText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormNumber}" Margin="2" ToolTip="Верхняя граница диапазона легенды. Если исходные значения в см²/м, умножьте на 100. Для открытого верхнего диапазона нужен численный максимум." /></DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellTemplate><DataTemplate><TextBox Text="{Binding RequiredAreaText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource FormNumber}" Margin="2" ToolTip="Максимальная площадь для цвета, мм²/м. См²/м умножьте на 100. Для «больше…» уточните максимум в расчёте." /></DataTemplate></DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
-                </Grid>
+                    <Expander x:Name="ZoneSettingsExpander" Header="Параметры зон" IsExpanded="True" Margin="0,12,0,4" Style="{StaticResource CompactExpander}">
+                        <StackPanel x:Name="ZoneSettingsPanel" Margin="0,4,0,4">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock Text="Направление" Style="{StaticResource FormLabel}" /><ComboBox x:Name="ComboBox_Direction" MinHeight="32" SelectionChanged="Parameter_SelectionChanged" /></StackPanel>
+                                <StackPanel Grid.Column="2"><TextBlock Text="Объединение, мм" Style="{StaticResource FormLabel}" ToolTip="Допуск для выравнивания концов соседних рядов и объединения близких участков с одинаковой арматурой." /><TextBox x:Name="TextBox_ZoneMergeTolerance" Style="{StaticResource FormNumber}" TextChanged="Parameter_TextChanged" /></StackPanel>
+                            </Grid>
+                            <TextBlock Text="Округление длины" Style="{StaticResource FormLabel}" Margin="0,12,0,6" />
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="66" /></Grid.ColumnDefinitions>
+                                    <RadioButton x:Name="RadioButton_RoundIncrement" Content="Кратно, мм" GroupName="Rounding" VerticalAlignment="Center" Checked="Parameter_Checked" />
+                                    <TextBox x:Name="TextBox_RoundIncrement" Grid.Column="1" Style="{StaticResource FormNumber}" IsEnabled="{Binding IsChecked, ElementName=RadioButton_RoundIncrement}" TextChanged="Parameter_TextChanged" />
+                                </Grid>
+                                <RadioButton x:Name="RadioButton_RoundCutLengths" Grid.Column="2" Content="Стандартная нарезка" GroupName="Rounding" VerticalAlignment="Center" Checked="Parameter_Checked" />
+                            </Grid>
+                            <CheckBox x:Name="CheckBox_ZoneEndsInPerimeter" Margin="0,16,0,10" Checked="Parameter_Checked" Unchecked="Parameter_Checked"
+                                      ToolTipService.ShowOnDisabled="True" ToolTip="Только при ручном назначении. П — у концов зон без места для прямой анкеровки.">
+                                <TextBlock Text="При нехватке анкеровки — П-окончания" TextWrapping="Wrap" />
+                            </CheckBox>
+                            <TextBlock Text="Тип и шаг — по зоне" Foreground="{StaticResource SubtleTextBrush}" Margin="0,0,0,6" />
+                            <TextBlock x:Name="TextBlock_ZoneLengthPolicy" Text="Длина П — автоматически, для 100% растянутых стыков в одном сечении." ToolTip="По бетону, классу и диаметру арматуры зоны." TextWrapping="Wrap" Foreground="{StaticResource SubtleTextBrush}" />
+                        </StackPanel>
+                    </Expander>
+                </StackPanel></ScrollViewer>
                     </TabItem>
                 </TabControl>
             </Border>
@@ -215,9 +252,21 @@
                                 <Button Content="Вписать" Style="{StaticResource ButtonOutline}" Click="Fit_Click" />
                             </StackPanel>
                         </Grid>
-                        <local:SlabPreviewCanvas x:Name="PreviewCanvas" Grid.Row="1" MinHeight="100" ClipToBounds="True" Focusable="True" ToolTip="Колесо — масштаб; перетаскивание — перемещение; двойной щелчок — вписать" />
+                        <local:SlabPreviewCanvas x:Name="PreviewCanvas" Grid.Row="1" MinHeight="100" ClipToBounds="True" Focusable="True" />
                         <Border Grid.Row="2" BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0" Padding="14,6">
-                            <TextBlock x:Name="PlanSummary" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                            <Grid>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="12" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock x:Name="PreviewNavigationHint" Grid.ColumnSpan="3" FontSize="11" Foreground="{StaticResource SubtleTextBrush}" TextWrapping="Wrap"
+                                           Text="Колесо — масштаб · Перетаскивание — сдвиг · Двойной щелчок — показать целиком" />
+                                <TextBlock x:Name="PreviewLegendBackground" Grid.Row="1" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap">
+                                    <Run Text="Фон" Foreground="#3482A4" /><Run Text=" · " /><Run Text="П-обрамление" Foreground="#DB6430" />
+                                </TextBlock>
+                                <TextBlock x:Name="PreviewLegendZones" Grid.Row="1" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap" Visibility="Collapsed">
+                                    <Run Text="Зоны" Foreground="{StaticResource SubtleTextBrush}" /><Run Text=" · " /><Run Text="П-окончания" Foreground="#DB6430" />
+                                </TextBlock>
+                                <TextBlock x:Name="PlanSummary" Grid.Row="1" Grid.Column="2" FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap" HorizontalAlignment="Right" Margin="0,4,0,0" />
+                            </Grid>
                         </Border>
                     </Grid>
                 </Border>
@@ -249,43 +298,27 @@
             <Expander x:Name="SettingsExpander" IsExpanded="False" Style="{StaticResource CompactExpander}">
                 <Expander.Header>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="Параметры" FontWeight="SemiBold" />
-                        <TextBlock Text="{Binding SelectedItem, ElementName=ComboBox_Direction}" Margin="18,0,0,0" FontWeight="Normal" Foreground="{StaticResource SubtleTextBrush}" />
+                        <TextBlock Text="Плита и защитный слой" FontWeight="SemiBold" />
                         <TextBlock Text="{Binding SelectedItem, ElementName=ComboBox_ConcreteClass}" Margin="12,0,0,0" FontWeight="Normal" Foreground="{StaticResource SubtleTextBrush}" />
                     </StackPanel>
                 </Expander.Header>
-                <ScrollViewer x:Name="SettingsScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="106">
-                    <WrapPanel Margin="0,2,0,0">
-                        <StackPanel Width="128" Margin="0,0,12,0">
-                            <TextBlock Text="Направление зон" Style="{StaticResource FormLabel}" />
-                            <ComboBox x:Name="ComboBox_Direction" MinHeight="32" SelectionChanged="Parameter_SelectionChanged" />
-                        </StackPanel>
-                        <StackPanel Width="90" Margin="0,0,12,0">
-                            <TextBlock Text="Бетон" Style="{StaticResource FormLabel}" />
-                            <ComboBox x:Name="ComboBox_ConcreteClass" MinHeight="32" SelectionChanged="Parameter_SelectionChanged" />
-                        </StackPanel>
-                        <StackPanel Width="128" Margin="0,0,12,0">
-                            <TextBlock Text="Отступ от края, мм" Style="{StaticResource FormLabel}" ToolTip="До поверхности стержня. Радиус учитывается дополнительно." />
-                            <TextBox x:Name="TextBox_EdgeCover" Style="{StaticResource FormNumber}" TextChanged="Parameter_TextChanged" />
-                        </StackPanel>
-                        <StackPanel Width="142" Margin="0,0,12,0">
-                            <TextBlock Text="Объединение зон, мм" Style="{StaticResource FormLabel}" ToolTip="Допустимый зазор между зонами одного цвета" />
-                            <TextBox x:Name="TextBox_ZoneMergeTolerance" Style="{StaticResource FormNumber}" TextChanged="Parameter_TextChanged" />
-                        </StackPanel>
-                        <StackPanel Width="128" Margin="0,0,12,0">
-                            <TextBlock Text="Смещение зон, мм" Style="{StaticResource FormLabel}" ToolTip="Дополнительное смещение арматуры зон внутрь плиты относительно соответствующего слоя." />
-                            <TextBox x:Name="TextBox_LayerOffset" Style="{StaticResource FormNumber}" TextChanged="Parameter_TextChanged" />
-                        </StackPanel>
-                        <StackPanel Width="224">
-                            <TextBlock Text="Округление длины" Style="{StaticResource FormLabel}" />
+                <ScrollViewer x:Name="SettingsScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" MaxHeight="110">
+                    <StackPanel Margin="2,4,12,4">
+                        <StackPanel x:Name="CommonSettingsPanel">
                             <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="92" /></Grid.ColumnDefinitions>
-                                <RadioButton x:Name="RadioButton_RoundIncrement" Content="Кратно, мм" GroupName="Rounding" VerticalAlignment="Center" Checked="Parameter_Checked" />
-                                <TextBox x:Name="TextBox_RoundIncrement" Grid.Column="1" Style="{StaticResource FormNumber}" IsEnabled="{Binding IsChecked, ElementName=RadioButton_RoundIncrement}" TextChanged="Parameter_TextChanged" />
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="104" /><ColumnDefinition Width="16" />
+                                    <ColumnDefinition Width="104" /><ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="104" /><ColumnDefinition Width="12" /><ColumnDefinition Width="104" /><ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock Text="Бетон" Style="{StaticResource FormLabel}" /><ComboBox x:Name="ComboBox_ConcreteClass" MinHeight="32" SelectionChanged="Parameter_SelectionChanged" /></StackPanel>
+                                <StackPanel Grid.Column="2"><TextBlock Text="Сверху, мм" Style="{StaticResource FormLabel}" /><TextBox x:Name="TextBox_TopCover" Style="{StaticResource FormNumber}" TextChanged="Parameter_TextChanged" /></StackPanel>
+                                <StackPanel Grid.Column="4"><TextBlock Text="Снизу, мм" Style="{StaticResource FormLabel}" /><TextBox x:Name="TextBox_BottomCover" Style="{StaticResource FormNumber}" TextChanged="Parameter_TextChanged" /></StackPanel>
+                                <StackPanel Grid.Column="6"><TextBlock Text="На торце, мм" Style="{StaticResource FormLabel}" /><TextBox x:Name="TextBox_EdgeCover" Style="{StaticResource FormNumber}" TextChanged="Parameter_TextChanged" /></StackPanel>
                             </Grid>
-                            <RadioButton x:Name="RadioButton_RoundCutLengths" Content="Стандартная нарезка" GroupName="Rounding" Margin="0,7,0,0" Checked="Parameter_Checked" />
                         </StackPanel>
-                    </WrapPanel>
+
+                    </StackPanel>
                 </ScrollViewer>
             </Expander>
         </Border>

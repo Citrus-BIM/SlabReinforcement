@@ -42,9 +42,9 @@ namespace SlabReinforcement.Core
             foreach (var face in faces)
             {
                 if (face == null || face.Vertices == null)
-                    throw new ArgumentException("Не задана грань подложки.", nameof(faces));
+                    throw new ArgumentException("Не найдена часть расчётной подложки. Выберите подложку заново.", nameof(faces));
                 if (face.Vertices.Any(p => !GeometryKernel.Finite(p.X) || !GeometryKernel.Finite(p.Y) || !GeometryKernel.Finite(p.Z)))
-                    throw new ArgumentException("Грань подложки содержит недопустимые координаты: " + face.Id, nameof(faces));
+                    throw new ArgumentException("Не удалось прочитать координаты участка подложки: " + face.Id, nameof(faces));
                 if (face.Vertices.Count < 3)
                 {
                     result.DegenerateFaceCount++;

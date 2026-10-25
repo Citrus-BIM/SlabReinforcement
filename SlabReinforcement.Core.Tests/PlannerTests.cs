@@ -73,14 +73,15 @@ public class PlannerTests
     }
 
     [Fact]
-    public void NarrowDisconnectedDemandGetsAMidpointRow()
+    public void NarrowDisconnectedDemandDoesNotCreateIsolatedMidpointRows()
     {
         var request = Request(Rect(0, 0, 3000, 2000), Rect(300, 301, 800, 309));
         request.Faces.Add(new FaceInput { Id = "narrow2", ColorKey = "red", Vertices = Rect(1800, 1101, 2300, 1109) });
         var plan = ReinforcementPlanner.Build(request);
-        Assert.True(plan.CanCreate, Diagnostics(plan));
-        Assert.Contains(plan.Bars, b => Math.Abs(b.Start.Y - 305) < 1e-6);
-        Assert.Contains(plan.Bars, b => Math.Abs(b.Start.Y - 1105) < 1e-6);
+        Assert.False(plan.CanCreate);
+        Assert.Empty(plan.Bars);
+        Assert.Empty(plan.Groups);
+        Assert.Contains(plan.Diagnostics, d => d.Code == "SINGLE_ROW_ZONES_SKIPPED");
     }
 
     [Fact]
@@ -387,12 +388,13 @@ public class PlannerTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void ConnectedNarrowLobeExtendsOneNearbyRowWithoutAddingBars(bool alongX)
+    public void AdjacentNarrowLobesExtendTwoNearbyRowsIntoOneZoneWithoutAddingBars(bool alongX)
     {
         var face = new List<Point2>
         {
-            new(300, 200), new(1000, 200), new(1000, 301), new(2300, 301),
-            new(2300, 309), new(1000, 309), new(1000, 1200), new(300, 1200)
+            new(300, 200), new(1000, 200), new(1000, 201), new(2300, 201),
+            new(2300, 209), new(1000, 209), new(1000, 401), new(2300, 401),
+            new(2300, 409), new(1000, 409), new(1000, 1200), new(300, 1200)
         };
         if (!alongX) face = face.Select(p => new Point2(p.Y, p.X)).ToList();
         var request = Request(alongX ? Rect(0, 0, 3000, 2000) : Rect(0, 0, 2000, 3000), face);
@@ -401,21 +403,21 @@ public class PlannerTests
         Assert.True(plan.CanCreate, Diagnostics(plan));
         Assert.Contains(plan.Bars, b => (alongX ? b.End.X : b.End.Y) >= 2300);
         Assert.Equal(6, plan.Bars.Count);
-        Assert.Single(plan.Bars, b => (alongX ? b.End.X : b.End.Y) >= 2300);
+        Assert.Equal(2, plan.Bars.Count(b => (alongX ? b.End.X : b.End.Y) >= 2300));
         Assert.Contains(plan.Diagnostics, d => d.Code == "ROWS_EXTENDED_FOR_COVERAGE" && !d.IsBlocking);
         AssertSafe(request, plan);
         AssertGroupsMatchBars(plan, alongX);
     }
 
     [Fact]
-    public void SupplementalRowsRemainSplitByAnOpening()
+    public void SingleSupplementalSegmentsBesideAnOpeningAreSkipped()
     {
         var request = FingerRequest(301, 309, 2300);
         request.Slabs[0].Holes.Add(Rect(1300, 290, 1500, 320));
         var plan = ReinforcementPlanner.Build(request);
         Assert.True(plan.CanCreate, Diagnostics(plan));
-        Assert.Contains(plan.Bars, b => b.End.X >= 1269 - 1e-6 && b.End.X < 1300);
-        Assert.Contains(plan.Bars, b => b.Start.Y > 301 && b.Start.Y < 309 && b.Start.X > 1500 && b.End.X >= 2300);
+        Assert.Contains(plan.Diagnostics, d => d.Code == "SINGLE_ROW_ZONES_SKIPPED");
+        Assert.DoesNotContain(plan.Bars, b => b.Start.Y > 301 && b.Start.Y < 309);
         AssertSafe(request, plan);
     }
 
@@ -432,17 +434,19 @@ public class PlannerTests
     }
 
     [Fact]
-    public void NearbyGridRowIsExtendedWithoutAddingAnOverlappingBar()
+    public void IsolatedExtendedGridRowIsSkippedWithoutAddingAnOverlappingBar()
     {
         var request = FingerRequest(201, 209, 2300);
         var plan = ReinforcementPlanner.Build(request);
         Assert.True(plan.CanCreate, Diagnostics(plan));
-        Assert.Contains(plan.Bars, b => Math.Abs(b.Start.Y - 200) < 1e-6 && b.End.X >= 2300);
+        Assert.Equal(5, plan.Bars.Count);
+        Assert.Contains(plan.Diagnostics, d => d.Code == "SINGLE_ROW_ZONES_SKIPPED");
+        Assert.DoesNotContain(plan.Bars, b => Math.Abs(b.Start.Y - 200) < 1e-6);
         Assert.DoesNotContain(plan.Bars, b => b.Start.Y > 200 && b.Start.Y < 212);
     }
 
     [Fact]
-    public void SupplementalRowsCannotOverlapBarsOfAnotherColor()
+    public void SkippedSupplementalRowsCannotCausePhantomCollisionsWithAnotherColor()
     {
         var request = FingerRequest(301, 309, 2300);
         request.Slabs[0].Holes.Add(Rect(1100, 170, 2400, 230));
@@ -450,8 +454,9 @@ public class PlannerTests
         request.Faces.Add(new FaceInput { Id = "blue-face", ColorKey = "blue", Vertices = Rect(1100, 310, 2400, 312) });
         request.Specifications.Add(new ReinforcementSpec { Key = "blue", ColorKey = "blue", MaterialKey = "A500", DiameterMm = 12, SpacingMm = 200 });
         var plan = ReinforcementPlanner.Build(request);
-        Assert.False(plan.CanCreate);
-        Assert.Contains(plan.Diagnostics, d => d.Code == "FINAL_BAR_COLLISION" && d.IsBlocking);
+        Assert.True(plan.CanCreate, Diagnostics(plan));
+        Assert.Contains(plan.Diagnostics, d => d.Code == "SINGLE_ROW_ZONES_SKIPPED");
+        Assert.DoesNotContain(plan.Diagnostics, d => d.Code == "FINAL_BAR_COLLISION");
     }
 
     [Fact]
@@ -462,37 +467,42 @@ public class PlannerTests
         request.Slabs[0].Holes.Add(Rect(1100, 370, 2400, 430));
         var plan = ReinforcementPlanner.Build(request);
         Assert.True(plan.CanCreate, Diagnostics(plan));
-        Assert.Contains(plan.Bars, b => b.Start.Y > 301 && b.Start.Y < 309 && b.End.X >= 2300);
+        Assert.Contains(plan.Diagnostics, d => d.Code == "SINGLE_ROW_ZONES_SKIPPED");
+        Assert.DoesNotContain(plan.Bars, b => b.Start.Y > 301 && b.Start.Y < 309);
         Assert.DoesNotContain(plan.Bars, b => (Math.Abs(b.Start.Y - 200) < 1e-6 || Math.Abs(b.Start.Y - 400) < 1e-6) && b.End.X > 1100);
         AssertSafe(request, plan);
     }
 
     [Fact]
-    public void ExtendingOneRowPreservesAnchorageRoundingAndOtherArrayMembers()
+    public void ExtendingAdjacentRowsPreservesAnchorageRoundingAndOtherArrayMembers()
     {
-        var request = FingerRequest(301, 309, 2303);
+        var request = DoubleFingerRequest(2303);
         request.Specifications[0].AnchorageMm = 125;
         request.Options.RoundIncrementMm = 100;
         var plan = ReinforcementPlanner.Build(request);
         Assert.True(plan.CanCreate, Diagnostics(plan));
-        var extended = Assert.Single(plan.Bars, b => b.End.X > 2000);
-        Assert.True(extended.End.X >= 2428 - 1e-6);
-        Assert.True(extended.Start.X <= 175 + 1e-6);
-        Assert.Equal(0, (extended.End.X - extended.Start.X) % 100, 6);
+        var extended = plan.Bars.Where(b => b.End.X > 2000).ToList();
+        Assert.Equal(2, extended.Count);
+        Assert.All(extended, b => {
+            Assert.True(b.End.X >= 2428 - 1e-6);
+            Assert.True(b.Start.X <= 175 + 1e-6);
+            Assert.Equal(0, (b.End.X - b.Start.X) % 100, 6);
+        });
         Assert.Equal(6, plan.Bars.Count);
-        Assert.All(plan.Bars.Where(b => b != extended), b => Assert.True(b.End.X < 1300));
+        Assert.All(plan.Bars.Where(b => !extended.Contains(b)), b => Assert.True(b.End.X < 1300));
         AssertGroupsMatchBars(plan, true);
     }
 
     [Fact]
-    public void ExtendedRowsAreCheckedAgainstOtherColors()
+    public void SkippedExtendedRowsCannotCausePhantomCollisionsWithAnotherColor()
     {
         var request = FingerRequest(301, 309, 2300);
         request.Faces.Add(new() { Id = "blue-face", ColorKey = "blue", Vertices = Rect(1100, 395, 2400, 405) });
         request.Specifications.Add(new() { Key = "blue", ColorKey = "blue", MaterialKey = "A500", DiameterMm = 12, SpacingMm = 200 });
         var plan = ReinforcementPlanner.Build(request);
-        Assert.False(plan.CanCreate);
-        Assert.Contains(plan.Diagnostics, d => d.Code == "FINAL_BAR_COLLISION" && d.IsBlocking);
+        Assert.True(plan.CanCreate, Diagnostics(plan));
+        Assert.Contains(plan.Diagnostics, d => d.Code == "SINGLE_ROW_ZONES_SKIPPED");
+        Assert.DoesNotContain(plan.Diagnostics, d => d.Code == "FINAL_BAR_COLLISION");
     }
 
     [Fact]
@@ -506,7 +516,8 @@ public class PlannerTests
         var plan = ReinforcementPlanner.Build(request);
         Assert.True(plan.CanCreate, Diagnostics(plan));
         Assert.DoesNotContain(plan.Bars, b => b.Start.Y <= 1200 && b.End.X > 1001);
-        Assert.Contains(plan.Bars, b => b.Start.Y >= 1392 && b.End.X >= 2300);
+        Assert.Contains(plan.Diagnostics, d => d.Code == "SINGLE_ROW_ZONES_SKIPPED");
+        Assert.DoesNotContain(plan.Bars, b => b.End.X >= 2300);
         AssertSafe(request, plan);
     }
 
@@ -547,7 +558,7 @@ public class PlannerTests
     }
 
     [Fact]
-    public void ExtendingOneRowSplitsLongArraysWithoutLosingOrDuplicatingMembers()
+    public void SkippingAnIsolatedExtensionPreservesAllOtherLongArrayMembers()
     {
         var request = Request(Rect(0, 0, 3000, 30000), new()
         {
@@ -558,11 +569,12 @@ public class PlannerTests
         request.Specifications[0].SpacingMm = 10;
         var plan = ReinforcementPlanner.Build(request);
         Assert.True(plan.CanCreate, Diagnostics(plan));
-        Assert.Equal(2981, plan.Bars.Count);
-        Assert.Equal(2981, plan.Bars.Select(b => b.Start.Y).Distinct().Count());
-        Assert.Single(plan.Bars, b => b.End.X >= 2300);
-        Assert.Equal(5, plan.Groups.Count);
-        Assert.All(plan.Groups, g => Assert.InRange(g.Count, 1, 1002));
+        Assert.Equal(2980, plan.Bars.Count);
+        Assert.Equal(2980, plan.Bars.Select(b => b.Start.Y).Distinct().Count());
+        Assert.DoesNotContain(plan.Bars, b => b.End.X >= 2300);
+        Assert.Contains(plan.Diagnostics, d => d.Code == "SINGLE_ROW_ZONES_SKIPPED");
+        Assert.Equal(4, plan.Groups.Count);
+        Assert.All(plan.Groups, g => Assert.InRange(g.Count, 2, 1002));
         AssertGroupsMatchBars(plan, true);
     }
 
@@ -578,10 +590,18 @@ public class PlannerTests
         var second = ReinforcementPlanner.Build(request);
         Assert.True(first.CanCreate, Diagnostics(first));
         Assert.True(second.CanCreate, Diagnostics(second));
-        Assert.Single(first.Bars, b => b.End.X >= 2300);
+        Assert.Contains(first.Diagnostics, d => d.Code == "SINGLE_ROW_ZONES_SKIPPED");
+        Assert.DoesNotContain(first.Bars, b => b.End.X >= 2300);
         Assert.Equal(first.Bars.Select(Serialize), second.Bars.Select(Serialize));
         AssertSafe(request, second);
     }
+
+    private static PlanRequest DoubleFingerRequest(double reach) => Request(Rect(0, 0, 3000, 2000), new()
+    {
+        new(300, 200), new(1000, 200), new(1000, 201), new(reach, 201),
+        new(reach, 209), new(1000, 209), new(1000, 401), new(reach, 401),
+        new(reach, 409), new(1000, 409), new(1000, 1200), new(300, 1200)
+    });
 
     private static PlanRequest FingerRequest(double low, double high, double reach) => Request(Rect(0, 0, 3000, 2000), new()
     {

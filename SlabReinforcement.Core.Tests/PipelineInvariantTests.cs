@@ -52,7 +52,9 @@ public class PipelineInvariantTests
             Slabs = new() { new() { Shell = Ring(0, 0, 4000, 3000), Holes = new() { Ring(1800, 1000, 2300, 2200) } } },
             Faces = new() { new() { Id = "mesh", ColorKey = "red", Vertices = face } },
             Specifications = new() { new() { Key = "d12", ColorKey = "red", MaterialKey = "500", DiameterMm = 12, SpacingMm = 200, AnchorageMm = 100 } },
-            Options = new() { EdgeCoverMm = 25, MergeToleranceMm = 50, RoundIncrementMm = 10 }
+            // Keep the oblique CAD demand as one real multirow zone so rotation
+            // invariance continues to compare physical output after singleton exclusion.
+            Options = new() { EdgeCoverMm = 25, MergeToleranceMm = 600, RoundIncrementMm = 10 }
         });
     }
 }
