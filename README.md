@@ -2,6 +2,8 @@
 
 Готовые сборки для **Revit 2019–2027**: [SlabReinforcement/bin](SlabReinforcement/bin). Используйте папку своего года `R2019`…`R2027` целиком, вместе с зависимостями. Корневые DLL оставлены для совместимости с прежним загрузчиком **Revit 2023**.
 
+[Схема доставки обновлений](docs/deployment/update-delivery.md): общий список имён, отдельные файлы каждого года через `Year`.
+
 [Проверки перед отправкой в master](docs/validation/2026-10-25-master-release.md): 743 теста, полный WPF UiSmoke, 40 сценариев в Revit 2023 и пересборка всех девяти конфигураций. Архивы и отдельный GitHub Release не создаются.
 
 [Принятые требования и все уточнения пользователя](docs/requirements/slab-reinforcement-user-decisions.md).
