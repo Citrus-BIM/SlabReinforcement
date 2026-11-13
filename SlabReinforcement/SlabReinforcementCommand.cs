@@ -6,6 +6,8 @@ using SlabReinforcement.Integration;
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
 using System.Windows.Interop;
 using System.Windows.Media;
 
@@ -16,6 +18,8 @@ namespace SlabReinforcement
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
+            try { _ = GetPluginStartInfo(); } catch { }
+
             var uiDoc = commandData.Application.ActiveUIDocument;
             if (uiDoc == null) { message = "Откройте проект с плитой."; return Result.Failed; }
             try
@@ -134,6 +138,65 @@ namespace SlabReinforcement
         {
             public IntPtr Handle { get; }
             public RevitWindow(IntPtr handle) { Handle = handle; }
+        }
+
+        private static async Task GetPluginStartInfo()
+        {
+            var thisAssembly = Assembly.GetExecutingAssembly();
+            const string assemblyName = "SlabReinforcement";
+            const string assemblyNameRus = "Зоны усиления плит";
+
+            var location = thisAssembly.Location;
+            if (string.IsNullOrEmpty(location))
+                return;
+
+            var dirPath = Path.GetDirectoryName(location);
+            if (dirPath == null || dirPath.Length == 0)
+                return;
+
+            var leafFolder = Path.GetFileName(dirPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            var isVersionedBuild = leafFolder.Length == 5 && leafFolder.StartsWith("R20", StringComparison.OrdinalIgnoreCase);
+
+            var dllPath = string.Empty;
+            var current = Directory.GetParent(dirPath);
+            for (var depth = 0; depth < 4 && current != null; depth++, current = current.Parent)
+            {
+                if (isVersionedBuild)
+                {
+                    var versionedCandidate = Path.Combine(current.FullName, "PluginInfoCollector", "PluginInfoCollector", "bin", leafFolder, "PluginInfoCollector.dll");
+                    if (File.Exists(versionedCandidate))
+                    {
+                        dllPath = versionedCandidate;
+                        break;
+                    }
+                }
+
+                var candidate = Path.Combine(current.FullName, "PluginInfoCollector", "PluginInfoCollector.dll");
+                if (File.Exists(candidate))
+                {
+                    dllPath = candidate;
+                    break;
+                }
+            }
+
+            if (string.IsNullOrEmpty(dllPath))
+                return;
+
+            var assembly = Assembly.LoadFrom(dllPath);
+            var type = assembly.GetType("PluginInfoCollector.InfoCollector");
+            if (type == null)
+                return;
+
+            var instance = Activator.CreateInstance(type);
+            if (instance == null)
+                return;
+
+            var method = type.GetMethod("CollectPluginUsageAsync");
+            if (method == null)
+                return;
+
+            if (method.Invoke(instance, new object[] { assemblyName, assemblyNameRus }) is Task task)
+                await task;
         }
     }
 }
